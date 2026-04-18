@@ -54,6 +54,9 @@ struct Index {
       this.historyMap.set(date, await RdbUtils.queryHistoriesByDate(date))
     }
 
+    // 创建收藏夹表格
+    await RdbUtils.createBookmarkTable()
+
     // 创建初始标签页（空白页）
     const firstTab = this.tabManager.newTab('about:blank', '新标签页')
     this.tabs = this.tabManager.getTabs()

@@ -2,6 +2,7 @@ import History from '../common/bean/History'
 import CommonConstants from '../common/constants/CommonConstants'
 import { Prompt, PromptAction } from '@kit.ArkUI'
 import PagesDialog from './PagesDialog'
+import BookmarkDialog from './BookmarkDialog'
 
 @CustomDialog
 export default struct SettingDialog {
@@ -42,6 +43,7 @@ export default struct SettingDialog {
       this.AboutBuilder()
       // 在 SettingDialog 的 build() 中添加
       this.HistoryBuilder()
+      this.BookmarkBuilder()
     }
     .padding({top: 5, bottom: 5})
   }
@@ -168,6 +170,33 @@ export default struct SettingDialog {
         alignment: DialogAlignment.Bottom
       });
       historyDialog.open();
+    })
+  }
+
+  @Builder BookmarkBuilder() {
+    Row() {
+      Text("收藏夹")
+        .margin({ left: 15 })
+        .fontSize(17)
+      Image($r("app.media.right_arrow_icon"))
+        .width(20)
+        .height(20)
+        .margin({ right: 15 })
+    }
+    .height(this.itemHeight)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
+    .onClick(() => {
+      let dialogController: CustomDialogController | null = null
+      dialogController = new CustomDialogController({
+        builder: BookmarkDialog({
+          onClose: () => {
+            dialogController?.close()
+          }
+        }),
+        alignment: DialogAlignment.Bottom
+      })
+      dialogController.open()
     })
   }
 }

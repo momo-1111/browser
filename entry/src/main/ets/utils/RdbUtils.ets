@@ -165,4 +165,48 @@ export default class RdbUtils {
 
     RdbUtils.executeSql(`DROP TABLE IF EXISTS date_table`)
   }
+
+  // 收藏夹表相关
+  static async createBookmarkTable() {
+    const sql = `CREATE TABLE IF NOT EXISTS bookmark_table (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+  )`
+    await RdbUtils.executeSql(sql)
+  }
+
+  static async insertBookmark(title: string, url: string) {
+    const now = new Date()
+    const timestamp = `${now.toLocaleString()}`
+    const valueBucket: relationalStore.ValuesBucket = {
+      "title": title,
+      "url": url,
+      "timestamp": timestamp
+    }
+    return RdbUtils.getStore().insert("bookmark_table", valueBucket)
+  }
+
+  static async queryAllBookmarks(): Promise<History[]> {
+    let resultSet = await RdbUtils.getStore().query(new relationalStore.RdbPredicates("bookmark_table"))
+    let list: History[] = []
+    while (resultSet.goToNextRow()) {
+      const id = resultSet.getLong(resultSet.getColumnIndex("id"))
+      const title = resultSet.getString(resultSet.getColumnIndex("title"))
+      const url = resultSet.getString(resultSet.getColumnIndex("url"))
+      const timestamp = resultSet.getString(resultSet.getColumnIndex("timestamp"))
+      const history = new History(title, url, timestamp)
+      history.setId(id)
+      list.push(history)
+    }
+    resultSet.close()
+    return list
+  }
+
+  static async deleteBookmarkById(id: number) {
+    let predicates = new relationalStore.RdbPredicates("bookmark_table")
+    predicates.equalTo("id", id)
+    return RdbUtils.getStore().delete(predicates)
+  }
 }

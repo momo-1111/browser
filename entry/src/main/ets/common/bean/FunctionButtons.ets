@@ -4,6 +4,7 @@ import {BackButton} from "./BackButton"
 import { SettingButton } from './SettingButton';
 import { PagesButton } from './PagesButton';
 import { PrivateButton } from './PrivateButton';
+import { FavoriteButton } from './FavoriteButton'
 
 @Component
 export struct FunctionButtons {
@@ -44,6 +45,7 @@ export struct FunctionButtons {
         })
       PagesButton()
       PrivateButton()
+      FavoriteButton()   // 新增收藏按钮
       SettingButton()
     }
     .width("100%")
