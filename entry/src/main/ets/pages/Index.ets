@@ -8,6 +8,8 @@ import { inputMethod } from '@kit.IMEKit'
 import RdbUtils from '../utils/RdbUtils'
 import { TabManager } from '../model/TabManager'
 import { TabModel } from '../model/TabModel'
+import { WebLongPressHelper } from '../utils/WebLongPressHelper'
+import emitter from '@ohos.events.emitter'
 
 PersistentStorage.PersistProp("privateMode", false)
 PersistentStorage.PersistProp("currentEngineIndex", 0)
@@ -38,6 +40,7 @@ struct Index {
   private windowClass: window.Window | null = null
   private textInputController: TextInputController = new TextInputController()
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController()
+  private longPressHelper?: WebLongPressHelper
 
   // 多标签页管理
   private tabManager: TabManager = new TabManager()
@@ -73,7 +76,7 @@ struct Index {
         this.keyboardHeight = data
       })
     })
-
+    this.longPressHelper = new WebLongPressHelper(this.webviewController, this.tabManager, this.getUIContext())
     console.debug("项目已启动")
   }
 
@@ -149,6 +152,8 @@ struct Index {
                 if (!this.privateMode) {
                   await this.onSaveHistory()
                 }
+                // 添加这一行：通知收藏按钮刷新状态
+                emitter.emit({ eventId: 10002 })
               } catch (error) {
                 console.log("获取 Url 异常：" + error)
               }
@@ -160,6 +165,9 @@ struct Index {
               } catch (error) {
                 console.log("更新前进或后退状态异常：" + error)
               }
+            })
+            .onTouch((event: TouchEvent) => {
+              this.longPressHelper?.onTouchEvent(event)
             })
         }
         .width("100%")

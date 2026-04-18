@@ -1,3 +1,4 @@
+// view/HistoryItem.ets
 import webview from '@ohos.web.webview'
 
 @Component
@@ -8,7 +9,8 @@ export default struct HistoryItem {
   @State deleteIcon: Resource = $r("app.media.trash_icon")
   @State showDeleteIcon: boolean = false
 
-  @Consume("pagesDialogShowed") isClicked: boolean
+  onItemClick?: () => void   // 新增回调
+
   @Consume("webIsSearched") isSearched: boolean
   @Consume webviewController: webview.WebviewController
 
@@ -16,7 +18,7 @@ export default struct HistoryItem {
     Row() {
       Button({ type: ButtonType.Normal }) {
         Column() {
-          Text(this.title === ""? this.url : this.title)
+          Text(this.title === "" ? this.url : this.title)
             .width("100%")
             .margin({ top: 5 })
             .fontSize(15)
@@ -41,9 +43,11 @@ export default struct HistoryItem {
       .shadow({ radius: 5, color: Color.Gray })
       .layoutWeight(1)
       .onClick(() => {
-        this.isClicked = ! this.isClicked
         this.isSearched = true
         this.webviewController.loadUrl(this.url)
+        if (this.onItemClick) {
+          this.onItemClick()
+        }
       })
 
       if (this.showDeleteIcon) {
@@ -69,17 +73,15 @@ export default struct HistoryItem {
       SwipeGesture({
         direction: SwipeDirection.Horizontal,
       })
-      .onAction((event: GestureEvent) => {
-        if (event.offsetX < -30) {
-          // 向左滑动显示删除按钮
-          this.translateX = -80
-          this.showDeleteIcon = true
-        } else if (event.offsetX > 30) {
-          // 向右滑动隐藏删除按钮
-          this.translateX = 0
-          this.showDeleteIcon = false
-        }
-      })
+        .onAction((event: GestureEvent) => {
+          if (event.offsetX < -30) {
+            this.translateX = -80
+            this.showDeleteIcon = true
+          } else if (event.offsetX > 30) {
+            this.translateX = 0
+            this.showDeleteIcon = false
+          }
+        })
     )
   }
 }

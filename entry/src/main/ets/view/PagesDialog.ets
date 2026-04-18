@@ -6,7 +6,8 @@ import HistoryItem from './HistoryItem'
 @CustomDialog
 export default struct PagesDialog {
   @Consume("historyMap") historyMap: Map<string, History[]>
-  dialogController: CustomDialogController
+  dialogController: CustomDialogController   // 必须存在，但不再使用
+  onClose?: () => void                       // 外部传入关闭回调
 
   @State historyGroups: HistoryGroup[] = []
 
@@ -15,15 +16,18 @@ export default struct PagesDialog {
   }
 
   async loadHistoryData() {
-    this.historyGroups = Array.from(this.historyMap.entries()).map(
-      (item): HistoryGroup => ({   // 注意这里 : HistoryGroup
-        date: item[0],
-        histories: item[1]
-      })
-    )
+    try {
+      const groups: HistoryGroup[] = []
+      for (let entry of this.historyMap.entries()) {
+        groups.push({ date: entry[0], histories: entry[1] })
+      }
+      this.historyGroups = groups
+    } catch (error) {
+      console.error('加载历史数据异常:', error)
+    }
   }
 
-  formatted(date: string) {
+  formatted(date: string): string {
     const today = this.getFormattedDate(new Date())
     const yesterday = this.getFormattedDate(new Date(Date.now() - 24 * 60 * 60 * 1000))
     if (date === today) return "今天"
@@ -32,7 +36,7 @@ export default struct PagesDialog {
     return `${dateParts[0]}年${parseInt(dateParts[1])}月${parseInt(dateParts[2])}日`
   }
 
-  getFormattedDate(date: Date) {
+  getFormattedDate(date: Date): string {
     const year = date.getFullYear()
     const month = date.getMonth() + 1
     const day = date.getDate()
@@ -50,7 +54,13 @@ export default struct PagesDialog {
           ListItemGroup({ header: this.ListGroupHeader(group.date) }) {
             ForEach(group.histories, (history: History) => {
               ListItem() {
-                HistoryItem({ title: history.title, url: history.url })
+                HistoryItem({
+                  title: history.title,
+                  url: history.url,
+                  onItemClick: () => {
+                    this.onClose?.()   // 点击后关闭对话框
+                  }
+                })
               }
             })
           }
