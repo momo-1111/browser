@@ -8,7 +8,6 @@ import { inputMethod } from '@kit.IMEKit'
 import RdbUtils from '../utils/RdbUtils'
 import { TabManager } from '../model/TabManager'
 import { TabModel } from '../model/TabModel'
-import { WebLongPressHelper } from '../utils/WebLongPressHelper'
 import emitter from '@ohos.events.emitter'
 
 PersistentStorage.PersistProp("privateMode", false)
@@ -40,7 +39,6 @@ struct Index {
   private windowClass: window.Window | null = null
   private textInputController: TextInputController = new TextInputController()
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController()
-  private longPressHelper?: WebLongPressHelper
 
   // 多标签页管理
   private tabManager: TabManager = new TabManager()
@@ -76,7 +74,6 @@ struct Index {
         this.keyboardHeight = data
       })
     })
-    this.longPressHelper = new WebLongPressHelper(this.webviewController, this.tabManager, this.getUIContext())
     console.debug("项目已启动")
   }
 
@@ -165,9 +162,6 @@ struct Index {
               } catch (error) {
                 console.log("更新前进或后退状态异常：" + error)
               }
-            })
-            .onTouch((event: TouchEvent) => {
-              this.longPressHelper?.onTouchEvent(event)
             })
         }
         .width("100%")
