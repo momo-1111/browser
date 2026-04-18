@@ -1,6 +1,15 @@
 {
   "src": [
     "pages/Start",
-    "pages/Index"
+    "pages/Index",
+    "pages/ProfilePage",
+    "pages/HistoryListPage",
+    "pages/SettingsPage",
+    "pages/LoginPage",
+    "pages/ProfileEditPage",
+    "pages/DocScanPage",
+    "pages/ImageAnalysisPage",
+    "pages/ScanResultPage",
+    "pages/DownloadListPage"
   ]
 }

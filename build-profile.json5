@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\19364\\.ohos\\config\\default_browser-master_7HJRYSwIlXAdEcSiGGDlJyVOIYtWQeN_QHDiM-DP_qg=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B0C826AA036D3A3F0CFC2FF0BB1EDBF9277A5E1F2676B6E4F13E46F8BFFCB261FB2C526154F330A",
+          "profile": "C:\\Users\\19364\\.ohos\\config\\default_browser-master_7HJRYSwIlXAdEcSiGGDlJyVOIYtWQeN_QHDiM-DP_qg=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\19364\\.ohos\\config\\default_browser-master_7HJRYSwIlXAdEcSiGGDlJyVOIYtWQeN_QHDiM-DP_qg=.p12",
+          "storePassword": "0000001B92DD50583F54282A628A52650D540D38A6A6E641A68713FB66BF89B1508F03F6DCBB9EDC24AC76"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
@@ -18,10 +32,33 @@
     ],
     "buildModeSet": [
       {
-        "name": "debug",
+        "name": "debug"
       },
       {
         "name": "release"
+      }
+    ],
+    "capabilities": [
+      {
+        "bundleName": "com.example.nanvision",
+        "config": [
+          {
+            "name": "Push Kit",
+            "capability": "com.huawei.service.push.base_service"
+          },
+          {
+            "name": "Device status detection",
+            "capability": "com.huawei.service.device_security.device_verify"
+          },
+          {
+            "name": "Map Kit",
+            "capability": "com.huawei.service.mapkit"
+          },
+          {
+            "name": "Safety Detect",
+            "capability": "com.huawei.service.device_security.safety_detect"
+          }
+        ]
       }
     ]
   },

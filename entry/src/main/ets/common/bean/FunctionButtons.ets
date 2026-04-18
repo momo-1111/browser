@@ -4,7 +4,7 @@ import {BackButton} from "./BackButton"
 import { SettingButton } from './SettingButton';
 import { PagesButton } from './PagesButton';
 import { PrivateButton } from './PrivateButton';
-import { FavoriteButton } from './FavoriteButton'
+import { ProfileButton } from './ProfileButton' // 1. 引入新按钮
 
 @Component
 export struct FunctionButtons {
@@ -43,10 +43,10 @@ export struct FunctionButtons {
             console.log("页面前进发生错误：" + error)
           }
         })
-      PagesButton()
-      PrivateButton()
-      FavoriteButton()   // 新增收藏按钮
-      SettingButton()
+      // PagesButton()
+      // PrivateButton()
+      ProfileButton()
+      // SettingButton()
     }
     .width("100%")
     .alignItems(VerticalAlign.Center)

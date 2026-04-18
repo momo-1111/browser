@@ -1,18 +1,15 @@
-// view/HistoryItem.ets
-import webview from '@ohos.web.webview'
+import { webview } from '@kit.ArkWeb';
 
 @Component
 export default struct HistoryItem {
-  @State title: string = ""
-  @State url: string = ""
+  @Prop title: string = ""
+  @Prop url: string = ""
   @State translateX: number = 0
   @State deleteIcon: Resource = $r("app.media.trash_icon")
   @State showDeleteIcon: boolean = false
 
-  onItemClick?: () => void   // 新增回调
-
-  @Consume("webIsSearched") isSearched: boolean
-  @Consume webviewController: webview.WebviewController
+  // 接收外部传入的回调函数，用于点击后的跳转处理
+  public onItemSelected: () => void = () => {}
 
   build() {
     Row() {
@@ -43,11 +40,9 @@ export default struct HistoryItem {
       .shadow({ radius: 5, color: Color.Gray })
       .layoutWeight(1)
       .onClick(() => {
-        this.isSearched = true
-        this.webviewController.loadUrl(this.url)
-        if (this.onItemClick) {
-          this.onItemClick()
-        }
+        // 将点击的 URL 存入临时存储，供 Index 页面读取
+        AppStorage.setOrCreate("targetUrl", this.url)
+        this.onItemSelected()
       })
 
       if (this.showDeleteIcon) {

@@ -10,6 +10,16 @@
       "2in1",
       "wearable"
     ],
+    "metadata": [
+      {
+        "name": "client_id",
+        "value": "6917603086877319283" // 替换为AGC后台获取的实际ID
+      },
+      {
+        "name": "app_id",
+        "value": "6917603086877319283"
+      }
+    ],
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
@@ -51,7 +61,12 @@
     ],
     "requestPermissions": [
       {
-        "name": "ohos.permission.INTERNET"
+        "name": "ohos.permission.INTERNET",
+        "reason": "$string:camera_reason", // 在 string.json 中添加说明
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
       }
     ]
   }
