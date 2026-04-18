@@ -43,7 +43,7 @@ export struct FunctionButtons {
             console.log("页面前进发生错误：" + error)
           }
         })
-      // PagesButton()
+      PagesButton()
       // PrivateButton()
       ProfileButton()
       // SettingButton()

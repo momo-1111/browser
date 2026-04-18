@@ -3,6 +3,7 @@ import { TabManager } from '../model/TabManager'
 import { TabModel } from '../model/TabModel'
 import { Prompt } from '@kit.ArkUI'
 import webview from '@ohos.web.webview'
+import emitter from '@ohos.events.emitter';
 
 @CustomDialog
 export default struct TabManagerDialog {
@@ -25,44 +26,28 @@ export default struct TabManagerDialog {
   }
 
   newTab() {
-    // 新建标签页，打开空白页
-    const newTab = this.tabManager.newTab('about:blank', '新标签页')
-    this.refreshTabs()
-    // 自动切换到新标签页
-    this.tabManager.switchTo(this.tabs.length - 1)
-    this.currentIndex = this.tabManager.getActiveIndex()
-    // 加载空白页
-    this.webviewController.loadUrl('about:blank')
-    // 更新 Index 中的 url 状态（通过 webviewController 的 onPageEnd 会自动同步）
-    this.dialogController.close()
-    Prompt.showToast({ message: '已创建新标签页' })
+    this.tabManager.newTab('about:blank', '新标签页');
+    this.refreshTabs();
+    const newIndex = this.tabs.length - 1;
+    // 发送事件通知 Index 切换到新标签页
+    emitter.emit('switchTab', { data: { index: newIndex } });
+    this.dialogController.close();
+    Prompt.showToast({ message: '已创建新标签页' });
   }
 
   closeTab(index: number) {
     if (this.tabs.length === 1) {
-      Prompt.showToast({ message: '至少保留一个标签页' })
-      return
+      Prompt.showToast({ message: '至少保留一个标签页' });
+      return;
     }
-    this.tabManager.closeTab(index)
-    this.refreshTabs()
-    // 如果关闭的是当前标签页，需要重新加载新当前标签页的 URL
-    const current = this.tabManager.getCurrentTab()
+    this.tabManager.closeTab(index);
+    this.refreshTabs();
+    // 如果关闭的是当前标签页，需要切换到新的当前标签页
+    const current = this.tabManager.getCurrentTab();
     if (current) {
-      this.webviewController.loadUrl(current.url)
+      const newCurrentIndex = this.tabManager.getActiveIndex();
+      emitter.emit('switchTab', { data: { index: newCurrentIndex } });
     }
-  }
-
-  switchToTab(index: number) {
-    this.tabManager.switchTo(index)
-    const current = this.tabManager.getCurrentTab()
-    if (current) {
-      this.webviewController.loadUrl(current.url)
-      // 如果当前 URL 不是空白页，标记已搜索
-      if (current.url && current.url !== 'about:blank') {
-        this.isSearched = true
-      }
-    }
-    this.dialogController.close()
   }
 
   build() {
@@ -129,7 +114,8 @@ export default struct TabManagerDialog {
             .backgroundColor('#f9f9f9')
             .borderRadius(16)
             .onClick(() => {
-              this.switchToTab(idx)
+              emitter.emit('switchTab', { data: { index: idx } });
+              this.dialogController.close();
             })
           }
         }, (tab: TabModel) => tab.id)

@@ -9,6 +9,14 @@ import { fileUri } from '@kit.CoreFileKit';
 import { promptAction } from '@kit.ArkUI'; // 改为 promptAction
 import UserCenter from '../view/BookmarkDialog'
 import Bookmark from '../common/bean/Bookmark'
+import { TabManager } from '../model/TabManager'
+import { TabModel } from '../model/TabModel'
+import { WebLongPressHelper } from '../utils/WebLongPressHelper'
+import emitter from '@ohos.events.emitter'
+
+interface SwitchTabEventData {
+  index: number;
+}
 
 // 持久化数据
 PersistentStorage.PersistProp("privateMode", false)
@@ -50,6 +58,7 @@ struct Index {
 
   @Provide("historyMap") @Watch("onHistoryChange") historyMap: Map<string, History[]> = new Map();
 
+  //@Provide('switchToTab') switchToTabFunc: (index: number) => void = this.switchToTab.bind(this);
 
   @Provide webviewController: webview.WebviewController = new webview.WebviewController()
   // 是否进行过搜索，用于判断是否显示 Web 组件
@@ -164,6 +173,40 @@ struct Index {
   // 获取输入法实例
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController()
 
+  // 实现长按
+  private longPressHelper?: WebLongPressHelper
+
+  // 多标签页管理
+  private tabManager: TabManager = new TabManager()
+  @State tabs: TabModel[] = []
+  @State currentIndex: number = 0
+  @Provide('tabManager') providedTabManager: TabManager = this.tabManager
+
+  // 切换标签页
+  private switchToTab(index: number) {
+    if (index < 0 || index >= this.tabs.length) return;
+    this.currentIndex = index;
+    this.tabManager.switchTo(index);
+    const currentTab = this.tabManager.getCurrentTab();
+    if (currentTab) {
+      this.url = currentTab.url;
+      this.isBacked = currentTab.canGoBack;
+      this.isForwarded = currentTab.canGoForward;
+      if (currentTab.url === 'about:blank') {
+        this.isSearched = false;   // 显示首页
+        // 如果当前 Web 组件不是空白页，可以手动加载空白页
+        if (this.webviewController.getUrl() !== 'about:blank') {
+          this.webviewController.loadUrl('about:blank');
+        }
+      } else {
+        this.isSearched = true;
+        if (this.webviewController.getUrl() !== currentTab.url) {
+          this.webviewController.loadUrl(currentTab.url);
+        }
+      }
+    }
+  }
+
   async aboutToAppear() {
     console.debug("项目正在启动")
 
@@ -187,6 +230,12 @@ struct Index {
     // 手动触发一次同步
     this.onHistoryChange()
 
+    // 新建标签页
+    const firstTab = this.tabManager.newTab('about:blank', '新标签页');
+    this.tabs = this.tabManager.getTabs();
+    this.currentIndex = 0;
+    this.switchToTab(0);  // 调用 switchToTab 统一处理 UI
+
     // 开启软键盘高度变化的监听
     window.getLastWindow(getContext(this), (err, data) => {
       if (err) {
@@ -199,6 +248,15 @@ struct Index {
       })
     })
 
+    // 监听标签页切换事件
+    emitter.on('switchTab', (data?: emitter.EventData) => {
+      const eventData = data?.data as SwitchTabEventData;
+      if (eventData && eventData.index !== undefined) {
+        this.switchToTab(eventData.index);
+      }
+    });
+
+    this.longPressHelper = new WebLongPressHelper(this.webviewController, this.tabManager, this.getUIContext())
     console.debug("项目已启动")
   }
 
@@ -298,23 +356,39 @@ struct Index {
             })
             .onPageEnd(async () => {
               try {
-                this.url = this.webviewController.getUrl()
-                if (!this.privateMode) {
-                  await this.onSaveHistory()
+                const newUrl = this.webviewController.getUrl();
+                const currentTab = this.tabManager.getCurrentTab();
+                // 只有当前标签页的 URL 与 Web 组件实际加载的 URL 不同，并且新 URL 不是 about:blank 时才更新
+                if (currentTab && currentTab.url !== newUrl && newUrl !== 'about:blank') {
+                  currentTab.url = newUrl;
+                  currentTab.title = this.webviewController.getTitle();
+                  this.url = newUrl;
+                  this.tabs = [...this.tabManager.getTabs()];
                 }
+                if (!this.privateMode) {
+                  await this.onSaveHistory();
+                }
+                emitter.emit({ eventId: 10002 });
               } catch (error) {
-                // TODO: Implement error handling.
-                console.log("获取 Url 异常：" + error)
+                console.log("获取 Url 异常：" + error);
               }
             })
             .onRefreshAccessedHistory(() => {
               try {
                 this.isBacked = this.webviewController.accessBackward()
                 this.isForwarded = this.webviewController.accessForward()
+                // 同步到当前标签页对象
+                const currentTab = this.tabManager.getCurrentTab()
+                if (currentTab) {
+                  currentTab.canGoBack = this.isBacked
+                  currentTab.canGoForward = this.isForwarded
+                }
               } catch (error) {
-                // TODO: Implement error handling.
                 console.log("更新前进或后退状态异常：" + error)
               }
+            })
+            .onTouch((event: TouchEvent) => {
+              this.longPressHelper?.onTouchEvent(event)
             })
         }
         .width("100%")
@@ -353,23 +427,27 @@ struct Index {
             // 提交搜索时
             .onSubmit((value) => {
               try {
+                let loadUrl = "";
                 if (this.checkContent(value)) {
-                  this.webviewController.loadUrl(value)
+                  loadUrl = value;
                 } else {
-                  this.webviewController.loadUrl(CommonConstants.SEARCH_ENGINES[this.searchEngine].prefix + value)
+                  loadUrl = CommonConstants.SEARCH_ENGINES[this.searchEngine].prefix + value;
                 }
-
-                this.url = this.webviewController.getOriginalUrl()
-
-                //更改搜索框的搜索状态
+                this.webviewController.loadUrl(loadUrl);
+                this.url = loadUrl;
+                // 更新当前标签页的 URL
+                const currentTab = this.tabManager.getCurrentTab();
+                if (currentTab) {
+                  currentTab.url = loadUrl;
+                  currentTab.title = ""; // 标题稍后会在 onPageEnd 中更新
+                  this.tabs = [...this.tabManager.getTabs()];
+                }
                 if (!this.isSearched) {
-                  this.isSearched = true
+                  this.isSearched = true;
                 }
-
-                // 收起软键盘
-                this.inputMethodController.stopInputSession()
+                this.inputMethodController.stopInputSession();
               } catch (error) {
-                console.log("提交搜索时异常：" + error)
+                console.log("提交搜索时异常：" + error);
               }
             })
           // 网页加载进度条

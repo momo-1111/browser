@@ -1,8 +1,9 @@
-// model/TabModel.ets
 export class TabModel {
   id: string
   title: string
   url: string
+  canGoBack: boolean = false
+  canGoForward: boolean = false
 
   constructor(url: string, title?: string) {
     this.id = Date.now().toString() + Math.random()
