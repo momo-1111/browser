@@ -13,7 +13,8 @@ import StudyModeRules from '../utils/StudyModeRules';
 import { fileUri } from '@kit.CoreFileKit';
 import { TabManager } from '../model/TabManager';
 import { TabModel } from '../model/TabModel';
-import { WebLongPressHelper } from '../utils/WebLongPressHelper';
+import { WebLongPressHelper, WebLongPressMenuItem } from '../utils/WebLongPressHelper';
+import WebLongPressMenuDialog from '../view/WebLongPressMenuDialog';
 import emitter from '@ohos.events.emitter';
 
 import { TtsReaderService } from '../utils/TtsReaderService';
@@ -116,6 +117,17 @@ struct Index {
   private textInputController: TextInputController = new TextInputController();
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController();
   private longPressHelper?: WebLongPressHelper;
+  @State longPressMenuItems: WebLongPressMenuItem[] = [];
+  private longPressMenuController: CustomDialogController = new CustomDialogController({
+    builder: WebLongPressMenuDialog({
+      items: this.longPressMenuItems,
+      onSelect: (index: number): void => {
+        this.longPressHelper?.runMenuAction(index);
+      }
+    }),
+    alignment: DialogAlignment.Bottom,
+    offset: { dx: 0, dy: -12 }
+  });
   private navigationHistoryMode: string = 'none';
 
   private tabManager: TabManager = new TabManager();
@@ -128,6 +140,26 @@ struct Index {
     this.ttsService = new TtsReaderService(this.webviewController, () => {
       this.syncTtsState();
     });
+  }
+
+  private ensureLongPressHelper(): WebLongPressHelper {
+    if (!this.longPressHelper) {
+      this.longPressHelper = new WebLongPressHelper(
+        this.webviewController,
+        this.tabManager,
+        this.getUIContext(),
+        getContext(this),
+        (items: WebLongPressMenuItem[]): void => {
+          this.showLongPressMenu(items);
+        }
+      );
+    }
+    return this.longPressHelper;
+  }
+
+  private showLongPressMenu(items: WebLongPressMenuItem[]): void {
+    this.longPressMenuItems = items;
+    this.longPressMenuController.open();
   }
 
   async onUserChanged() {
@@ -297,6 +329,7 @@ struct Index {
   async aboutToAppear() {
     console.debug('项目正在启动');
     this.ensureTtsService();
+    this.ensureLongPressHelper();
     await RdbUtils.createDownloadTable();
     this.initDownloadListener();
     await RdbUtils.createProfileTable();
@@ -331,7 +364,7 @@ struct Index {
       if (!eventData || !eventData.enabled) return;
       void this.detectAndSetReaderContent();
     });
-    this.longPressHelper = new WebLongPressHelper(this.webviewController, this.tabManager, this.getUIContext());
+    this.ensureLongPressHelper();
     console.debug('项目已启动');
   }
 
@@ -637,6 +670,7 @@ struct Index {
                   if (this.skipNextHistorySave) { this.skipNextHistorySave = false; return; }
                   if (!this.privateMode) await this.onSaveHistory();
                   emitter.emit({ eventId: 10002 });
+                  this.ensureLongPressHelper().disableNativeImageDrag();
                   await this.detectAndSetReaderContent();
                 } catch (error) { console.log('获取 Url 异常：' + error); }
               })
@@ -652,7 +686,10 @@ struct Index {
                 }
                 catch (error) { console.log('更新前进或后退状态异常：' + error); }
               })
-              .onTouch((event: TouchEvent) => { this.longPressHelper?.onTouchEvent(event); });
+              .onTouch((event: TouchEvent) => {
+                const handled: boolean = this.ensureLongPressHelper().onTouchEvent(event);
+                return handled;
+              });
 
             if (this.isReaderMode) {
               this.ReaderContentPanel()
