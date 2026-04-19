@@ -3,6 +3,7 @@ import CommonConstants from '../common/constants/CommonConstants'
 import { Prompt, PromptAction } from '@kit.ArkUI'
 import StudyModeRules from '../utils/StudyModeRules'
 import WhitelistDialog from './WhitelistDialog'
+import emitter from '@ohos.events.emitter'
 
 @CustomDialog
 export default struct SettingDialog {
@@ -21,6 +22,7 @@ export default struct SettingDialog {
   @StorageLink("readerDetectLoading") readerDetectLoading: boolean = false
   @StorageLink("readerConfidence") readerConfidence: number = 0
   @StorageLink("readerUnsupportedReason") readerUnsupportedReason: string = ''
+  @StorageLink("readerRequestToken") readerRequestToken: number = 0
   @StorageLink("ttsRequestToken") ttsRequestToken: number = 0
 
   controller: CustomDialogController
@@ -56,10 +58,10 @@ export default struct SettingDialog {
     } else {
       Column() {
         this.EngineBuilder()
+        this.ReaderModeBuilder()    // 阅读器模式（许）
         this.DarkModeBuilder()
         this.StudyModeBuilder()     // 学习模式（吕）
         this.WhitelistBuilder()     // 白名单管理（吕）
-        this.ReaderModeBuilder()    // 阅读器模式（许）
         this.TtsEntryBuilder()      // 朗读入口（许）
         this.ClearHistoryBuilder()
         this.AboutBuilder()
@@ -204,6 +206,10 @@ export default struct SettingDialog {
             return
           }
           this.readerModeEnabled = isOn
+          if (isOn) {
+            this.readerRequestToken = this.readerRequestToken + 1
+            emitter.emit('readerRequest', { data: { enabled: true, token: this.readerRequestToken } })
+          }
           Prompt.showToast({ message: isOn ? "已进入阅读器模式" : "已退出阅读器模式" })
         })
     }

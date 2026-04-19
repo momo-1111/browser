@@ -59,13 +59,42 @@ export class TtsReaderService {
     this.onStateChange();
   }
 
+  private async sleep(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
+  // 临时无阈值模式：只要能提取出可展示正文，就允许进入阅读器。
+  private hasRenderableReaderContent(content: ArticleContent): boolean {
+    return content.paragraphCount > 0 && content.totalLength > 0;
+  }
+
+  private fallbackParagraphsFromVisibleText(text: string): string[] {
+    if (!text || text.length < 30) return [];
+    const blocks = text
+      .split(/\n{2,}|[。！？；]\s*/)
+      .map(item => item.trim())
+      .filter(item => item.length >= 18)
+      .slice(0, 80);
+    return blocks;
+  }
+
   // 工具：脚本结果解码
   private decodeScriptResult(raw: string): string {
     if (!raw) return '';
     let decoded = raw;
-    if (decoded.length >= 2 && decoded.startsWith('"') && decoded.endsWith('"')) {
-      decoded = decoded.substring(1, decoded.length - 1);
+
+    // runJavaScript 常返回 JSON 字符串字面量，优先按 JSON 反序列化更稳健。
+    try {
+      const parsed = JSON.parse(raw) as Object;
+      if (typeof parsed === 'string') {
+        decoded = parsed;
+      }
+    } catch (error) {
+      if (decoded.length >= 2 && decoded.startsWith('"') && decoded.endsWith('"')) {
+        decoded = decoded.substring(1, decoded.length - 1);
+      }
     }
+
     return decoded
       .replace(/\\u003C/gi, '<')
       .replace(/\\u003E/gi, '>')
@@ -74,47 +103,113 @@ export class TtsReaderService {
       .replace(/\\u0027/gi, "'")
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '\r')
-      .replace(/\\t/g, '\t')
-      .replace(/\\\"/g, '"');
+      .replace(/\\t/g, '\t');
   }
 
-  // 执行页面脚本
   private async runScript(script: string): Promise<string> {
-    return new Promise((resolve) => {
-      try {
-        this.webviewController.runJavaScript(script, (error: Error, result: string) => {
-          if (error) { resolve(''); } else { resolve(result ?? ''); }
-        });
-      } catch (error) {
-        resolve('');
-      }
-    });
+    try {
+      // Prefer Promise-style API to avoid callback signature drift across SDK versions.
+      const result = await this.webviewController.runJavaScript(script);
+      return result ?? '';
+    } catch (error) {
+      return '';
+    }
   }
 
   // 检测阅读器内容
   async detectReaderContent(): Promise<ArticleContent> {
     try {
-      const rawHtml = await this.runScript(this.readerHtmlScript);
-      const html = this.decodeScriptResult(rawHtml);
-      const rawText = await this.runScript(this.readerTextScript);
-      const visibleText = this.decodeScriptResult(rawText);
-      const rawTitle = await this.runScript(this.readerTitleScript);
-      const pageTitle = this.decodeScriptResult(rawTitle);
-      const fallbackTitle = pageTitle.length > 0 ? pageTitle : this.webviewController.getTitle();
+      const url = this.webviewController.getUrl();
+      let best = new ArticleContent('', [], 0, false, '阅读器未命中');
+      let bestDiag = '';
+      const diagLogs: string[] = [];
 
-      let extracted = ReaderExtractionService.extractFromHtml(html, this.webviewController.getUrl(), fallbackTitle);
-      if (!extracted.available && visibleText.length > 0) {
-        const fallbackExtracted = ReaderExtractionService.extractFromRenderedText(visibleText, this.webviewController.getUrl(), fallbackTitle);
-        if (fallbackExtracted.available || fallbackExtracted.paragraphCount > extracted.paragraphCount) {
-          extracted = fallbackExtracted;
+      this.ttsDebugInfo = `reader-detect|start|url=${url}`;
+
+      // 动态站点常在 onPageEnd 后继续注入正文，做短延迟重试可显著提升命中率。
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const attemptLogs: string[] = [`attempt=${attempt}`, `url=${url}`];
+        const rawHtml = await this.runScript(this.readerHtmlScript);
+        const html = this.decodeScriptResult(rawHtml);
+        attemptLogs.push(`htmlLen=${html.length}`);
+        const rawText = await this.runScript(this.readerTextScript);
+        const visibleText = this.decodeScriptResult(rawText);
+        attemptLogs.push(`textLen=${visibleText.length}`);
+        const rawTitle = await this.runScript(this.readerTitleScript);
+        const pageTitle = this.decodeScriptResult(rawTitle);
+        const fallbackTitle = pageTitle.length > 0 ? pageTitle : this.webviewController.getTitle();
+        attemptLogs.push(`titleLen=${fallbackTitle.length}`);
+
+        let extracted = ReaderExtractionService.extractFromHtml(html, url, fallbackTitle);
+        let source = 'html';
+        attemptLogs.push(`htmlAvailable=${extracted.available}`);
+        attemptLogs.push(`htmlP=${extracted.paragraphCount}`);
+        attemptLogs.push(`htmlTotal=${extracted.totalLength}`);
+        attemptLogs.push(`htmlConf=${extracted.confidence.toFixed(2)}`);
+        if (!extracted.available && visibleText.length > 0) {
+          const fallbackExtracted = ReaderExtractionService.extractFromRenderedText(visibleText, url, fallbackTitle);
+          attemptLogs.push(`textAvailable=${fallbackExtracted.available}`);
+          attemptLogs.push(`textP=${fallbackExtracted.paragraphCount}`);
+          attemptLogs.push(`textTotal=${fallbackExtracted.totalLength}`);
+          attemptLogs.push(`textConf=${fallbackExtracted.confidence.toFixed(2)}`);
+          if (fallbackExtracted.available || fallbackExtracted.paragraphCount > extracted.paragraphCount) {
+            extracted = fallbackExtracted;
+            source = 'text';
+          }
+        }
+
+        if (extracted.paragraphCount === 0 && visibleText.length >= 40) {
+          const fallbackParagraphs = this.fallbackParagraphsFromVisibleText(visibleText);
+          attemptLogs.push(`fallbackParagraphs=${fallbackParagraphs.length}`);
+          if (fallbackParagraphs.length > 0) {
+            extracted.paragraphs = fallbackParagraphs;
+            extracted.paragraphCount = fallbackParagraphs.length;
+            extracted.totalLength = fallbackParagraphs.reduce((sum, item) => sum + item.length, 0);
+            if (extracted.title.length === 0) {
+              extracted.title = fallbackTitle;
+            }
+            source = 'visible-text';
+          }
+        }
+
+        if (!extracted.available && (!html || html.length < 50) && visibleText.length < 30) {
+          extracted.unsupportedReason = '页面正文仍在异步加载，建议稍后重试或下滑页面后再开启阅读器';
+        }
+
+        attemptLogs.push(`finalSource=${source}`);
+        attemptLogs.push(`finalAvailable=${extracted.available}`);
+        attemptLogs.push(`finalP=${extracted.paragraphCount}`);
+        attemptLogs.push(`finalTotal=${extracted.totalLength}`);
+        attemptLogs.push(`finalConf=${extracted.confidence.toFixed(2)}`);
+
+        const diag = attemptLogs.join('|');
+        diagLogs.push(diag);
+
+        if (this.hasRenderableReaderContent(extracted)) {
+          this.ttsDebugInfo = `reader-detect|ok|${diag}`;
+          const result = new ArticleContent(extracted.title, extracted.paragraphs, extracted.confidence, true,
+            `阅读器日志：${diag}`);
+          return result;
+        }
+
+        if (extracted.paragraphCount > best.paragraphCount || (extracted.paragraphCount === best.paragraphCount && extracted.confidence > best.confidence)) {
+          best = extracted;
+          bestDiag = diag;
+        }
+
+        if (attempt < 3) {
+          await this.sleep(attempt * 260);
         }
       }
-      if (!extracted.available && (!html || html.length < 50) && visibleText.length < 30) {
-        extracted.unsupportedReason = '页面正文仍在异步加载，建议稍后重试或下滑页面后再开启阅读器';
-      }
-      return new ArticleContent(extracted.title, extracted.paragraphs, extracted.confidence, extracted.available, extracted.unsupportedReason);
+
+      const reason = best.unsupportedReason && best.unsupportedReason.length > 0 ? best.unsupportedReason : '页面未提取到可展示正文';
+      const briefLog = diagLogs.length > 0 ? diagLogs.join(' || ') : bestDiag;
+      const withDiag = `${reason}；阅读器日志：${briefLog}`;
+      this.ttsDebugInfo = `reader-detect|failed|${briefLog}`;
+      return new ArticleContent(best.title, best.paragraphs, best.confidence, false, withDiag);
     } catch (error) {
-      return new ArticleContent('', [], 0, false, '阅读器解析异常');
+      this.ttsDebugInfo = `reader-detect|error|${String(error)}`;
+      return new ArticleContent('', [], 0, false, `阅读器解析异常：${String(error)}`);
     }
   }
 
@@ -185,7 +280,7 @@ export class TtsReaderService {
     const rawText = await this.runScript(this.readerTextScript);
     const plain = this.decodeScriptResult(rawText);
     if (plain.length < 20) {
-      this.ttsErrorReason = '页面可见文本过少，可能尚未加载完成';
+      this.ttsErrorReason = `页面可见文本过少(${plain.length})，可能尚未加载完成`;
       return;
     }
     let filtered = 0;
@@ -205,7 +300,7 @@ export class TtsReaderService {
     }
     this.ttsUnits = this.dedupeTtsUnits(this.ttsUnits).slice(0, 300);
     if (this.ttsUnits.length === 0) {
-      this.ttsErrorReason = `页面文本过滤后为空（过滤 ${filtered} 条）`;
+      this.ttsErrorReason = `页面文本过滤后为空（原始长度 ${plain.length}，过滤 ${filtered} 条）`;
     }
   }
 
@@ -889,4 +984,5 @@ export class TtsReaderService {
   getTtsOutputMode(): string { return this.ttsOutputMode; }
   getTtsUnitParagraphIndex(): number[] { return this.ttsUnitParagraphIndex; }
   getTtsSource(): string { return this.ttsSource; }
+  getTtsDebugInfo(): string { return this.ttsDebugInfo; }
 }
