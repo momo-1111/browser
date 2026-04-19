@@ -95,7 +95,7 @@ class ReaderExtractionService {
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '\r')
       .replace(/\\t/g, '\t')
-      .replace(/\\\"/g, '"')
+      
   }
 
   private extractTitle(html: string, fallbackTitle: string): string {
