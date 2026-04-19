@@ -11,6 +11,7 @@ interface LongPressElementInfo {
   link: string | null
   img: string | null
   text: string | null
+  selectedText: string | null
 }
 
 interface Position {
@@ -36,12 +37,14 @@ export class WebLongPressHelper {
   private appContext: Context
   private getUserId: () => string
   private onShowMenu?: (items: WebLongPressMenuItem[]) => void
+  private onAddToNote?: (sourceType: string, sourceText: string) => void
   private menuActions: (() => void)[] = []
 
   private touchStartTime: number = 0
   private touchStartX: number = 0
   private touchStartY: number = 0
   private longPressTriggered: boolean = false
+  private longPressShouldConsume: boolean = false
   private longPressTimer: number = -1
   private readonly longPressDelay: number = 550
   private readonly moveTolerance: number = 12
@@ -53,7 +56,8 @@ export class WebLongPressHelper {
     uiContext: UIContext,
     appContext: Context,
     getUserId: () => string,
-    onShowMenu?: (items: WebLongPressMenuItem[]) => void
+    onShowMenu?: (items: WebLongPressMenuItem[]) => void,
+    onAddToNote?: (sourceType: string, sourceText: string) => void
   ) {
     this.webController = webController
     this.tabManager = tabManager
@@ -61,6 +65,7 @@ export class WebLongPressHelper {
     this.appContext = appContext
     this.getUserId = getUserId
     this.onShowMenu = onShowMenu
+    this.onAddToNote = onAddToNote
   }
 
   public runMenuAction(index: number): void {
@@ -82,6 +87,7 @@ export class WebLongPressHelper {
       this.touchStartX = event.touches[0].x
       this.touchStartY = event.touches[0].y
       this.longPressTriggered = false
+      this.longPressShouldConsume = false
       this.logDebug(`touch down x=${this.touchStartX}, y=${this.touchStartY}`)
       this.startLongPressTimer()
       return false
@@ -95,17 +101,17 @@ export class WebLongPressHelper {
         this.logDebug(`touch move cancel distance=${distance}`)
         this.cancelLongPress()
       }
-      return this.longPressTriggered
+      return this.longPressShouldConsume
     }
 
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-      const consumed: boolean = this.longPressTriggered
+      const consumed: boolean = this.longPressShouldConsume
       this.logDebug(`touch end type=${event.type}, consumed=${consumed}`)
       this.cancelLongPress()
       return consumed
     }
 
-    return this.longPressTriggered
+    return this.longPressShouldConsume
   }
 
   private startLongPressTimer(): void {
@@ -117,6 +123,7 @@ export class WebLongPressHelper {
         return
       }
       this.longPressTriggered = true
+      this.longPressShouldConsume = false
       const pos: Position = { x: this.touchStartX, y: this.touchStartY }
       this.logDebug(`timer fired x=${pos.x}, y=${pos.y}`)
       this.handleLongPress(pos).catch((err: Error) => console.error('Long press failed: ' + err.message))
@@ -126,6 +133,8 @@ export class WebLongPressHelper {
   private cancelLongPress(): void {
     this.clearLongPressTimer()
     this.touchStartTime = 0
+    this.longPressTriggered = false
+    this.longPressShouldConsume = false
   }
 
   private clearLongPressTimer(): void {
@@ -203,6 +212,12 @@ export class WebLongPressHelper {
           var link = null;
           var img = null;
           var text = null;
+          var selectedText = '';
+          try {
+            selectedText = (window.getSelection && window.getSelection().toString()) || '';
+          } catch (selectionError) {
+            selectedText = '';
+          }
           for (var i = 0; i < elements.length; i++) {
             var elem = elements[i];
             if (!link && elem.closest) {
@@ -221,7 +236,8 @@ export class WebLongPressHelper {
             if (link && img && text) break;
           }
           if (text) text = text.trim().replace(/\\s+/g, ' ').substring(0, 200);
-          return { link: link, img: img, text: text };
+          if (selectedText) selectedText = selectedText.trim().replace(/\\s+/g, ' ').substring(0, 1000);
+          return { link: link, img: img, text: text, selectedText: selectedText };
         }
         var x = ${position.x};
         var y = ${position.y};
@@ -239,7 +255,7 @@ export class WebLongPressHelper {
       const result: string = await this.webController.runJavaScript(js)
       this.logDebug('runJavaScript result=' + result)
       const info: LongPressElementInfo = JSON.parse(this.decodeScriptResult(result)) as LongPressElementInfo
-      this.logDebug(`parsed link=${info.link ? 'yes' : 'no'}, img=${info.img ? 'yes' : 'no'}, text=${info.text ? info.text.length : 0}`)
+      this.logDebug(`parsed link=${info.link ? 'yes' : 'no'}, img=${info.img ? 'yes' : 'no'}, text=${info.text ? info.text.length : 0}, selected=${info.selectedText ? info.selectedText.length : 0}`)
       this.showMenu(info)
     } catch (error) {
       console.error('Resolve long press target failed: ' + error)
@@ -250,6 +266,14 @@ export class WebLongPressHelper {
 
   private showMenu(info: LongPressElementInfo): void {
     const sheets: SheetItem[] = []
+    const selectedText: string = info.selectedText ? info.selectedText.trim() : ''
+    const hasSelectedText: boolean = selectedText.length > 0
+
+    if (!info.link && !info.img && !hasSelectedText) {
+      this.logDebug('text long press without selection, leave native selection active')
+      this.longPressShouldConsume = false
+      return
+    }
 
     if (info.link) {
       const link: string = info.link
@@ -285,23 +309,34 @@ export class WebLongPressHelper {
         action: (): void => this.copyToClipboard(img)
       })
     }
-    if (info.text && info.text.trim().length > 0) {
-      const text: string = info.text
+    if (hasSelectedText) {
       sheets.push({
-        title: '复制文字',
+        title: '复制选中文字',
         icon: 'T',
-        subtitle: '复制当前文字',
+        subtitle: '复制蓝色选区内容',
         tone: '#7A4CC2',
-        action: (): void => this.copyToClipboard(text)
+        action: (): void => this.copyToClipboard(selectedText)
+      })
+    }
+
+    const noteText: string = this.buildNoteText(info)
+    if (noteText.length > 0) {
+      sheets.push({
+        title: '添加到笔记',
+        icon: 'N',
+        subtitle: '保存到网页笔记',
+        tone: '#2F6BFF',
+        action: (): void => this.addToNote(noteText)
       })
     }
 
     if (sheets.length === 0) {
       this.logDebug('no actionable target')
-      Prompt.showToast({ message: '当前位置没有可操作内容' })
+      this.longPressShouldConsume = false
       return
     }
 
+    this.longPressShouldConsume = true
     this.logDebug('showActionSheet count=' + sheets.length)
     this.menuActions = sheets.map((item: SheetItem) => item.action)
     if (this.onShowMenu) {
@@ -339,6 +374,31 @@ export class WebLongPressHelper {
     const systemPasteboard = pasteboard.getSystemPasteboard()
     systemPasteboard.setData(pasteData)
     Prompt.showToast({ message: '已复制' })
+  }
+
+  private buildNoteText(info: LongPressElementInfo): string {
+    let parts: string[] = []
+    if (info.selectedText && info.selectedText.trim().length > 0) {
+      parts.push(info.selectedText.trim())
+    } else if ((info.link || info.img) && info.text && info.text.trim().length > 0) {
+      parts.push(info.text.trim())
+    }
+    if (info.link) {
+      parts.push('链接：' + info.link)
+    }
+    if (info.img) {
+      parts.push('图片：' + info.img)
+    }
+    return parts.join('\n')
+  }
+
+  private addToNote(sourceText: string): void {
+    if (this.onAddToNote) {
+      this.onAddToNote('web-content', sourceText)
+      return
+    }
+    this.copyToClipboard(sourceText)
+    Prompt.showToast({ message: '已复制内容，可粘贴到笔记' })
   }
 
   private getImageExtension(url: string, contentType: string): string {

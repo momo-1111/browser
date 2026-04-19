@@ -12,6 +12,7 @@
     "pages/ImageAnalysisPage",
     "pages/ScanResultPage",
     "pages/DownloadListPage",
-    "pages/ReadAloud"
+    "pages/ReadAloud",
+    "pages/WebNotePage"
   ]
 }

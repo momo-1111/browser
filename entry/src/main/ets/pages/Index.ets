@@ -15,6 +15,7 @@ import { TabManager } from '../model/TabManager';
 import { TabModel } from '../model/TabModel';
 import { WebLongPressHelper, WebLongPressMenuItem } from '../utils/WebLongPressHelper';
 import WebLongPressMenuDialog from '../view/WebLongPressMenuDialog';
+import WebNoteDialog from '../view/WebNoteDialog';
 import emitter from '@ohos.events.emitter';
 
 import { TtsReaderService } from '../utils/TtsReaderService';
@@ -118,11 +119,32 @@ struct Index {
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController();
   private longPressHelper?: WebLongPressHelper;
   @State longPressMenuItems: WebLongPressMenuItem[] = [];
+  @State noteInitialContent: string = '';
+  @State noteSourceText: string = '';
+  @State noteSourceType: string = 'manual';
+  @State quickActionsExpanded: boolean = false;
   private longPressMenuController: CustomDialogController = new CustomDialogController({
     builder: WebLongPressMenuDialog({
       items: this.longPressMenuItems,
       onSelect: (index: number): void => {
         this.longPressHelper?.runMenuAction(index);
+      }
+    }),
+    alignment: DialogAlignment.Bottom,
+    offset: { dx: 0, dy: -12 }
+  });
+  private webNoteDialogController: CustomDialogController = new CustomDialogController({
+    builder: WebNoteDialog({
+      url: this.url,
+      title: this.webviewController.getTitle(),
+      initialContent: this.noteInitialContent,
+      sourceText: this.noteSourceText,
+      sourceType: this.noteSourceType,
+      userId: this.userId,
+      onSaved: (): void => {
+        this.noteInitialContent = '';
+        this.noteSourceText = '';
+        this.noteSourceType = 'manual';
       }
     }),
     alignment: DialogAlignment.Bottom,
@@ -152,6 +174,9 @@ struct Index {
         (): string => this.userId,
         (items: WebLongPressMenuItem[]): void => {
           this.showLongPressMenu(items);
+        },
+        (sourceType: string, sourceText: string): void => {
+          this.openWebNoteDialog(sourceType, sourceText);
         }
       );
     }
@@ -161,6 +186,18 @@ struct Index {
   private showLongPressMenu(items: WebLongPressMenuItem[]): void {
     this.longPressMenuItems = items;
     this.longPressMenuController.open();
+  }
+
+  private openWebNoteDialog(sourceType: string = 'manual', sourceText: string = ''): void {
+    if (!this.canShowFavorite()) {
+      Prompt.showToast({ message: '打开网页后才能添加笔记' });
+      return;
+    }
+    this.quickActionsExpanded = false;
+    this.noteInitialContent = '';
+    this.noteSourceText = sourceText;
+    this.noteSourceType = sourceType;
+    this.webNoteDialogController.open();
   }
 
   async onUserChanged() {
@@ -332,6 +369,7 @@ struct Index {
     this.ensureTtsService();
     this.ensureLongPressHelper();
     await RdbUtils.createDownloadTable();
+    await RdbUtils.createWebNoteTable();
     this.initDownloadListener();
     await RdbUtils.createProfileTable();
     await RdbUtils.createDateTable();
@@ -511,6 +549,59 @@ struct Index {
 
   private onTabSwitchRequest() {
     this.switchToTab(this.tabSwitchIndex);
+  }
+
+  @Builder
+  private WebQuickActions() {
+    Row({ space: 8 }) {
+      Button({ type: ButtonType.Circle, stateEffect: true }) {
+        Text(this.quickActionsExpanded ? '×' : '+')
+          .fontSize(24)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#45A5FF')
+      }
+      .width(44)
+      .height(44)
+      .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
+      .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
+      .onClick(() => {
+        this.quickActionsExpanded = !this.quickActionsExpanded
+      })
+
+      if (this.quickActionsExpanded) {
+        Button({ type: ButtonType.Circle, stateEffect: true }) {
+          Image($r('app.media.note'))
+            .width(22)
+            .height(22)
+        }
+        .width(44)
+        .height(44)
+        .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
+        .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
+        .onClick(() => {
+          this.openWebNoteDialog()
+        })
+
+        Row() {
+          FavoriteButton({
+            currentUrl: this.url,
+            currentTitle: this.tabManager.getCurrentTab()?.title || ''
+          })
+        }
+        .width(44)
+        .height(44)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
+        .borderRadius(22)
+        .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
+        .onClick(() => {
+          this.quickActionsExpanded = false
+        })
+      }
+    }
+    .height(48)
+    .alignItems(VerticalAlign.Center)
+    .animation({ duration: 180, curve: Curve.EaseOut })
   }
 
   private onToggleReaderMode() {
@@ -698,15 +789,10 @@ struct Index {
 
             if (this.canShowFavorite()) {
               Row() {
-                FavoriteButton({
-                  currentUrl: this.url,
-                  currentTitle: this.tabManager.getCurrentTab()?.title || ''
-                })
+                this.WebQuickActions()
               }
-              .width(48)
-              .height(48)
-              .align(Alignment.TopEnd)
-              .margin({ top: 14, right: 14 })
+              .align(Alignment.TopStart)
+              .margin({ top: 14, left: 14 })
               .zIndex(4)
             }
           }
