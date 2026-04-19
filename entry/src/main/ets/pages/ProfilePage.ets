@@ -23,7 +23,7 @@ struct ProfilePage {
 
   private mainMenus: ProfileMenuItem[] = [
     { icon: $r('app.media.clone_regular'), title: '浏览历史', url: 'pages/HistoryListPage' },
-    { icon: $r('app.media.bookmark'), title: '我的书签', url: '' },
+    { icon: $r('app.media.bookmark'), title: '我的书签', url: 'pages/BookmarkListPage' },
     { icon: $r('app.media.download'), title: '下载记录', url: 'pages/DownloadListPage' }, // 补全路径
     { icon: $r('app.media.note'), title: '网页笔记', url: '' },
     { icon: $r('app.media.gear_setting_settings_wheel_icon'), title: '设置中心', url: 'pages/SettingsPage' },
@@ -186,6 +186,10 @@ struct ProfilePage {
     .width('100%').padding(18)
     .justifyContent(FlexAlign.SpaceBetween)
     .onClick(() => {
+      if (item.title === '网页笔记') {
+        Prompt.showToast({ message: '网页笔记功能还没有内容' })
+        return
+      }
       if (item.url !== "") router.pushUrl({ url: item.url })
     })
   }

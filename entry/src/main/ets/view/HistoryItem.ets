@@ -1,4 +1,3 @@
-import { webview } from '@kit.ArkWeb';
 import { Prompt } from '@kit.ArkUI'
 import CommonConstants from '../common/constants/CommonConstants'
 import DomainUtils from '../utils/DomainUtils'
@@ -17,12 +16,10 @@ export default struct HistoryItem {
   public onItemSelected: () => void = () => {}
 
   // 学习模式
-  @Consume("pagesDialogShowed") isClicked: boolean
-  @Consume("webIsSearched") isSearched: boolean
-  @Consume webviewController: webview.WebviewController
   @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
   @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
   @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
+  @StorageLink("darkMode") darkMode: boolean = false
 
   /**
    * 构建当前策略配置并判断是否允许导航
@@ -47,30 +44,49 @@ export default struct HistoryItem {
   build() {
     Row() {
       Button({ type: ButtonType.Normal }) {
-        Column() {
-          Text(this.title === ""? this.url : this.title)
-            .width("100%")
-            .margin({ top: 5 })
-            .fontSize(15)
-            .fontWeight(FontWeight.Medium)
-            .textAlign(TextAlign.Start)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .maxLines(1)
-          Text(this.url)
-            .width("100%")
-            .margin({ top: 5 })
-            .fontSize(10)
-            .textAlign(TextAlign.Start)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .maxLines(1)
+        Row({ space: 12 }) {
+          Text((this.title === "" ? this.url : this.title).substring(0, 1).toUpperCase())
+            .width(38)
+            .height(38)
+            .textAlign(TextAlign.Center)
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#45A5FF')
+            .backgroundColor(this.darkMode ? '#17324A' : '#EAF5FF')
+            .borderRadius(14)
+
+          Column({ space: 5 }) {
+            Text(this.title === "" ? this.url : this.title)
+              .width("100%")
+              .fontSize(15)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.darkMode ? '#F8FAFC' : '#101828')
+              .textAlign(TextAlign.Start)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .maxLines(1)
+            Text(this.url)
+              .width("100%")
+              .fontSize(11)
+              .fontColor(this.darkMode ? '#98A2B3' : '#667085')
+              .textAlign(TextAlign.Start)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .maxLines(1)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
         }
-        .padding({ left: 15, right: 15 })
-        .margin({ bottom: 5 })
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        .padding({ left: 14, right: 14, top: 12, bottom: 12 })
       }
-      .margin({ left: 15, right: 15, bottom: 2 })
-      .borderRadius("40px")
-      .backgroundColor(Color.White)
-      .shadow({ radius: 5, color: Color.Gray })
+      .margin({ left: 16, right: 16, bottom: 10 })
+      .borderRadius(18)
+      .backgroundColor(this.darkMode ? '#252B33' : Color.White)
+      .shadow({
+        radius: this.darkMode ? 0 : 12,
+        color: '#16000000',
+        offsetY: 5
+      })
       .layoutWeight(1)
       .onClick(() => {
         // 先进行学习模式策略校验，拦截时仅提示 toast，不执行后续跳转
@@ -78,11 +94,9 @@ export default struct HistoryItem {
           return;
         }
 
-        // 校验通过：存储 URL 到 AppStorage，执行外部回调，并切换学习模式相关状态
+        // 校验通过：存储 URL 到 AppStorage，执行外部回调。
         AppStorage.setOrCreate("targetUrl", this.url);
         this.onItemSelected();
-        this.isClicked = !this.isClicked;
-        this.isSearched = true;
       });
 
       if (this.showDeleteIcon) {

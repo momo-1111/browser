@@ -1,54 +1,51 @@
-import webview from '@ohos.web.webview';
-import {ForwardButton} from "./ForwardButton";
-import {BackButton} from "./BackButton"
-import { SettingButton } from './SettingButton';
-import { PagesButton } from './PagesButton';
-import { PrivateButton } from './PrivateButton';
-import { ProfileButton } from './ProfileButton' // 1. 引入新按钮
+import { ForwardButton } from './ForwardButton'
+import { BackButton } from './BackButton'
+import { SettingButton } from './SettingButton'
+import { PagesButton } from './PagesButton'
+import { TabManager } from '../../model/TabManager'
+import { ProfileButton } from './ProfileButton'
+import emitter from '@ohos.events.emitter'
 
 @Component
 export struct FunctionButtons {
-  // 绑定当前页面是否可回退
-  // 绑定当前页面是否可前进
   @Link isBacked: boolean
   @Link isForward: boolean
 
-  @Consume webviewController: webview.WebviewController
+  @Consume('tabManager') tabManager: TabManager
 
   build() {
     Row() {
       BackButton()
-        .opacity(this.isBacked? 1 : 0.5)
+        .opacity(this.isBacked ? 1 : 0.5)
         .enabled(this.isBacked)
         .onClick(() => {
           try {
-            if (this.webviewController.accessBackward()) {
-              this.webviewController.backward()
+            const targetUrl = this.tabManager.goBack()
+            if (targetUrl) {
+              emitter.emit('tabHistoryNavigate', { data: { url: targetUrl } })
             }
           } catch (error) {
-            // TODO: Implement error handling.
-            console.log("页面后退发生错误：" + error)
+            console.log('Back navigation failed: ' + error)
           }
         })
       ForwardButton()
-        .opacity(this.isForward? 1 : 0.5)
+        .opacity(this.isForward ? 1 : 0.5)
         .enabled(this.isForward)
         .onClick(() => {
           try {
-            if (this.webviewController.accessForward()) {
-              this.webviewController.forward()
+            const targetUrl = this.tabManager.goForward()
+            if (targetUrl) {
+              emitter.emit('tabHistoryNavigate', { data: { url: targetUrl } })
             }
           } catch (error) {
-            // TODO: Implement error handling.
-            console.log("页面前进发生错误：" + error)
+            console.log('Forward navigation failed: ' + error)
           }
         })
       PagesButton()
-      // PrivateButton()
       ProfileButton()
       SettingButton()
     }
-    .width("100%")
+    .width('100%')
     .alignItems(VerticalAlign.Center)
     .justifyContent(FlexAlign.SpaceAround)
   }

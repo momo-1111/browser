@@ -5,7 +5,6 @@ import HistoryItem from './HistoryItem'
 @CustomDialog
 export default struct PagesDialog {
   @Consume("historyMap") historyMap: Map<string, History[]>
-  @Consume("pagesDialogShowed") @Watch("onClicked") isClicked: boolean
 
   @State historyGroups: HistoryGroup[] = []
 
@@ -56,10 +55,6 @@ export default struct PagesDialog {
     return `${year}_${month.toString().padStart(2, '0')}_${day.toString().padStart(2, '0')}`
   }
 
-  onClicked() {
-    this.dialogController.close()
-  }
-
   @Builder ListGroupHeader(date: string) {
     Text(this.formatted(date))
       .fontSize(17)
@@ -77,7 +72,13 @@ export default struct PagesDialog {
           ListItemGroup({header: this.ListGroupHeader(group.date)}) {
             ForEach(group.histories, (history: History) => {
               ListItem() {
-                HistoryItem({ title: history.title, url: history.url })
+                HistoryItem({
+                  title: history.title,
+                  url: history.url,
+                  onItemSelected: () => {
+                    this.dialogController.close()
+                  }
+                })
               }
             })
           }

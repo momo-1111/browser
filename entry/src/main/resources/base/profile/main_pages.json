@@ -4,6 +4,7 @@
     "pages/Index",
     "pages/ProfilePage",
     "pages/HistoryListPage",
+    "pages/BookmarkListPage",
     "pages/SettingsPage",
     "pages/LoginPage",
     "pages/ProfileEditPage",
