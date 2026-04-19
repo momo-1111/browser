@@ -1,6 +1,8 @@
 import History from '../common/bean/History'
 import CommonConstants from '../common/constants/CommonConstants'
 import { Prompt, PromptAction } from '@kit.ArkUI'
+import StudyModeRules from '../utils/StudyModeRules'
+import WhitelistDialog from './WhitelistDialog'
 
 @CustomDialog
 export default struct SettingDialog {
@@ -10,8 +12,12 @@ export default struct SettingDialog {
   @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
   @StorageLink("currentEngineName") currentEngineName: string = CommonConstants.SEARCH_ENGINES[0].engine
   @StorageLink("darkMode") darkMode: boolean = false
+  @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
+  @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
 
   controller: CustomDialogController
+
+  @State showWhitelist: boolean = false
 
   private searchEngine: SelectOption[] = []
 
@@ -20,6 +26,7 @@ export default struct SettingDialog {
   promptAction: PromptAction = this.getUIContext().getPromptAction();
 
   async aboutToAppear() {
+    this.searchEngine = []
     for (let item of CommonConstants.SEARCH_ENGINES) {
       this.searchEngine.push({value: item.engine})
     }
@@ -34,13 +41,21 @@ export default struct SettingDialog {
   }
 
   build() {
-    Column() {
-      this.EngineBuilder()
-      this.DarkModeBuilder()
-      this.ClearHistoryBuilder()
-      this.AboutBuilder()
+    if (this.showWhitelist) {
+      WhitelistDialog({
+        onBack: () => { this.showWhitelist = false }
+      })
+    } else {
+      Column() {
+        this.EngineBuilder()
+        this.DarkModeBuilder()
+        this.StudyModeBuilder()
+        this.WhitelistBuilder()
+        this.ClearHistoryBuilder()
+        this.AboutBuilder()
+      }
+      .padding({top: 5, bottom: 5})
     }
-    .padding({top: 5, bottom: 5})
   }
 
   // 设置搜索引擎
@@ -86,6 +101,59 @@ export default struct SettingDialog {
     .height(this.itemHeight)
     .width("100%")
     .justifyContent(FlexAlign.SpaceBetween)
+  }
+
+  @Builder StudyModeBuilder() {
+    Column() {
+      Row() {
+        Text("学习模式")
+          .margin({left: 15})
+          .fontSize(17)
+        Toggle({type: ToggleType.Switch, isOn: this.studyModeEnabled})
+          .margin({right: 15})
+          .animation({
+            duration: 50
+          })
+          .onChange((isOn: boolean) => {
+            this.studyModeEnabled = isOn
+            Prompt.showToast({
+              message: isOn ? "学习模式已启用" : "学习模式已关闭",
+            })
+          })
+      }
+      .height(this.itemHeight)
+      .width("100%")
+      .justifyContent(FlexAlign.SpaceBetween)
+      Text("开启后仅允许访问白名单站点和搜索引擎")
+        .margin({left: 15})
+        .fontSize(12)
+        .fontColor(Color.Gray)
+    }
+  }
+
+  @Builder WhitelistBuilder() {
+    Row() {
+      Column() {
+        Text("白名单管理")
+          .fontSize(17)
+        Text("允许直接访问的学习站点")
+          .fontSize(11)
+          .fontColor(Color.Gray)
+          .margin({ top: 2 })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .margin({left: 15})
+      Text(`共 ${StudyModeRules.parseWhitelist(this.studyWhitelistJson).length} 项`)
+        .margin({right: 15})
+        .fontSize(12)
+        .fontColor("#45A5FF")
+    }
+    .height(this.itemHeight + 10)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
+    .onClick(() => {
+      this.showWhitelist = true
+    })
   }
 
   // 清除浏览记录
