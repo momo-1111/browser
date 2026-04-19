@@ -10,6 +10,7 @@
     "pages/DocScanPage",
     "pages/ImageAnalysisPage",
     "pages/ScanResultPage",
-    "pages/DownloadListPage"
+    "pages/DownloadListPage",
+    "pages/ReadAloud"
   ]
 }

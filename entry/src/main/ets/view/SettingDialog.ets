@@ -12,8 +12,16 @@ export default struct SettingDialog {
   @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
   @StorageLink("currentEngineName") currentEngineName: string = CommonConstants.SEARCH_ENGINES[0].engine
   @StorageLink("darkMode") darkMode: boolean = false
+  // 学习模式相关（吕）
   @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
   @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
+  // 阅读器相关（许）
+  @StorageLink("readerModeEnabled") readerModeEnabled: boolean = false
+  @StorageLink("readerFeatureAvailable") readerFeatureAvailable: boolean = false
+  @StorageLink("readerDetectLoading") readerDetectLoading: boolean = false
+  @StorageLink("readerConfidence") readerConfidence: number = 0
+  @StorageLink("readerUnsupportedReason") readerUnsupportedReason: string = ''
+  @StorageLink("ttsRequestToken") ttsRequestToken: number = 0
 
   controller: CustomDialogController
 
@@ -49,8 +57,10 @@ export default struct SettingDialog {
       Column() {
         this.EngineBuilder()
         this.DarkModeBuilder()
-        this.StudyModeBuilder()
-        this.WhitelistBuilder()
+        this.StudyModeBuilder()     // 学习模式（吕）
+        this.WhitelistBuilder()     // 白名单管理（吕）
+        this.ReaderModeBuilder()    // 阅读器模式（许）
+        this.TtsEntryBuilder()      // 朗读入口（许）
         this.ClearHistoryBuilder()
         this.AboutBuilder()
       }
@@ -79,7 +89,7 @@ export default struct SettingDialog {
     .justifyContent(FlexAlign.SpaceBetween)
   }
 
-  // 设置深色模式 or 浅色模式
+  // 设置深色模式
   @Builder DarkModeBuilder() {
     Row() {
       Text("深色模式")
@@ -93,7 +103,6 @@ export default struct SettingDialog {
         .onChange((isOn: boolean) => {
           this.darkMode = isOn
           Prompt.showToast({
-            // 根据开关状态显示不同消息
             message: isOn ? "深色模式已启用" : "深色模式已关闭",
           })
         })
@@ -103,6 +112,7 @@ export default struct SettingDialog {
     .justifyContent(FlexAlign.SpaceBetween)
   }
 
+  // 学习模式开关（吕）
   @Builder StudyModeBuilder() {
     Column() {
       Row() {
@@ -131,6 +141,7 @@ export default struct SettingDialog {
     }
   }
 
+  // 白名单管理（吕）
   @Builder WhitelistBuilder() {
     Row() {
       Column() {
@@ -154,6 +165,74 @@ export default struct SettingDialog {
     .onClick(() => {
       this.showWhitelist = true
     })
+  }
+
+  // 阅读器模式开关（许）
+  @Builder ReaderModeBuilder() {
+    Row() {
+      Column({ space: 2 }) {
+        Text("阅读器模式")
+          .fontSize(17)
+          .fontColor(Color.Black)
+        if (this.readerDetectLoading) {
+          Text("识别中...")
+            .fontSize(11)
+            .fontColor("#45A5FF")
+        } else {
+          Text(this.readerFeatureAvailable ? `当前页面可阅读 (${Math.round(this.readerConfidence * 100)}%)` : "当前页面不可用")
+            .fontSize(11)
+            .fontColor(this.readerFeatureAvailable ? "#45A5FF" : Color.Gray)
+          if (!this.readerFeatureAvailable && this.readerUnsupportedReason.length > 0) {
+            Text(`原因：${this.readerUnsupportedReason}`)
+              .fontSize(10)
+              .fontColor("#E67E22")
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+        }
+      }
+      .margin({left: 15})
+      .alignItems(HorizontalAlign.Start)
+
+      Toggle({ type: ToggleType.Switch, isOn: this.readerModeEnabled })
+        .margin({ right: 15 })
+        .onChange((isOn: boolean) => {
+          if (isOn && !this.readerFeatureAvailable) {
+            this.readerModeEnabled = false
+            const reason = this.readerUnsupportedReason.length > 0 ? this.readerUnsupportedReason : "识别结果未满足阈值"
+            Prompt.showToast({ message: `当前页面暂不支持阅读器模式：${reason}` })
+            return
+          }
+          this.readerModeEnabled = isOn
+          Prompt.showToast({ message: isOn ? "已进入阅读器模式" : "已退出阅读器模式" })
+        })
+    }
+    .height(54)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
+  }
+
+  // 朗读入口（许）
+  @Builder TtsEntryBuilder() {
+    Row() {
+      Text("朗读页面")
+        .margin({left: 15})
+        .fontSize(17)
+
+      Button("开始")
+        .type(ButtonType.Capsule)
+        .height(30)
+        .fontSize(12)
+        .margin({ right: 15 })
+        .enabled(true)
+        .opacity(1)
+        .onClick(() => {
+          this.ttsRequestToken = this.ttsRequestToken + 1
+        })
+    }
+    .height(this.itemHeight)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
   }
 
   // 清除浏览记录

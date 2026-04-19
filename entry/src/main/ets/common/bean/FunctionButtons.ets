@@ -46,7 +46,7 @@ export struct FunctionButtons {
       PagesButton()
       // PrivateButton()
       ProfileButton()
-      // SettingButton()
+      SettingButton()
     }
     .width("100%")
     .alignItems(VerticalAlign.Center)
