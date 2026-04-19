@@ -10,6 +10,12 @@ export default struct SettingDialog {
   @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
   @StorageLink("currentEngineName") currentEngineName: string = CommonConstants.SEARCH_ENGINES[0].engine
   @StorageLink("darkMode") darkMode: boolean = false
+  @StorageLink("readerModeEnabled") readerModeEnabled: boolean = false
+  @StorageLink("readerFeatureAvailable") readerFeatureAvailable: boolean = false
+  @StorageLink("readerDetectLoading") readerDetectLoading: boolean = false
+  @StorageLink("readerConfidence") readerConfidence: number = 0
+  @StorageLink("readerUnsupportedReason") readerUnsupportedReason: string = ''
+  @StorageLink("ttsRequestToken") ttsRequestToken: number = 0
 
   controller: CustomDialogController
 
@@ -37,10 +43,78 @@ export default struct SettingDialog {
     Column() {
       this.EngineBuilder()
       this.DarkModeBuilder()
+      this.ReaderModeBuilder()
+      this.TtsEntryBuilder()
       this.ClearHistoryBuilder()
       this.AboutBuilder()
     }
     .padding({top: 5, bottom: 5})
+  }
+
+  @Builder ReaderModeBuilder() {
+    Row() {
+      Column({ space: 2 }) {
+        Text("阅读器模式")
+          .fontSize(17)
+          .fontColor(Color.Black)
+        if (this.readerDetectLoading) {
+          Text("识别中...")
+            .fontSize(11)
+            .fontColor("#45A5FF")
+        } else {
+          Text(this.readerFeatureAvailable ? `当前页面可阅读 (${Math.round(this.readerConfidence * 100)}%)` : "当前页面不可用")
+            .fontSize(11)
+            .fontColor(this.readerFeatureAvailable ? "#45A5FF" : Color.Gray)
+          if (!this.readerFeatureAvailable && this.readerUnsupportedReason.length > 0) {
+            Text(`原因：${this.readerUnsupportedReason}`)
+              .fontSize(10)
+              .fontColor("#E67E22")
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+        }
+      }
+      .margin({left: 15})
+      .alignItems(HorizontalAlign.Start)
+
+      Toggle({ type: ToggleType.Switch, isOn: this.readerModeEnabled })
+        .margin({ right: 15 })
+        .onChange((isOn: boolean) => {
+          if (isOn && !this.readerFeatureAvailable) {
+            this.readerModeEnabled = false
+            const reason = this.readerUnsupportedReason.length > 0 ? this.readerUnsupportedReason : "识别结果未满足阈值"
+            Prompt.showToast({ message: `当前页面暂不支持阅读器模式：${reason}` })
+            return
+          }
+          this.readerModeEnabled = isOn
+          Prompt.showToast({ message: isOn ? "已进入阅读器模式" : "已退出阅读器模式" })
+        })
+    }
+    .height(54)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
+  }
+
+  @Builder TtsEntryBuilder() {
+    Row() {
+      Text("朗读页面")
+        .margin({left: 15})
+        .fontSize(17)
+
+      Button("开始")
+        .type(ButtonType.Capsule)
+        .height(30)
+        .fontSize(12)
+        .margin({ right: 15 })
+        .enabled(true)
+        .opacity(1)
+        .onClick(() => {
+          this.ttsRequestToken = this.ttsRequestToken + 1
+        })
+    }
+    .height(this.itemHeight)
+    .width("100%")
+    .justifyContent(FlexAlign.SpaceBetween)
   }
 
   // 设置搜索引擎

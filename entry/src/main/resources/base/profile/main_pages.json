@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/Start",
-    "pages/Index"
+    "pages/Index",
+    "pages/ReadAloud"
   ]
 }
