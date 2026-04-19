@@ -11,7 +11,7 @@ export struct SettingButton {
   dialogController: CustomDialogController = new CustomDialogController({
     builder: SettingDialog(),
     alignment: DialogAlignment.Bottom,
-    offset: {dx: 0, dy: "-9%"}
+    offset: { dx: 0, dy: -20 }
   })
 
   build() {

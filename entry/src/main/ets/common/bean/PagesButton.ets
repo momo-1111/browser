@@ -1,13 +1,11 @@
-// common/bean/PagesButton.ets
 import TabManagerDialog from "../../view/TabManagerDialog"
 
 @Component
 export struct PagesButton {
-  @State defaultImage: Resource = $r("app.media.clone_regular")
-  @State activedImage: Resource = $r("app.media.clone_solid")
+  @StorageLink('tabCount') tabCount: number = 1
 
-  private defaultScale: ScaleOptions = {x: 1, y: 1}
-  private activedScale: ScaleOptions = {x: 1.2, y: 1.2}
+  private defaultScale: ScaleOptions = { x: 1, y: 1 }
+  private activedScale: ScaleOptions = { x: 1.2, y: 1.2 }
   @State currentScale: ScaleOptions = this.defaultScale
 
   dialogController: CustomDialogController = new CustomDialogController({
@@ -17,25 +15,28 @@ export struct PagesButton {
   })
 
   build() {
-    Button({type: ButtonType.Circle, stateEffect: false}) {
-      Column() {
-        Image(this.defaultImage)
-          .width(30)
-          .height(30)
-      }
+    Button({ type: ButtonType.Circle, stateEffect: false }) {
+      Text(`${this.tabCount}`)
+        .width(28)
+        .height(24)
+        .textAlign(TextAlign.Center)
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#101828')
+        .backgroundColor('#FFFFFF')
+        .borderRadius(6)
+        .border({ width: 1.5, color: '#101828' })
     }
     .width(40)
     .height(40)
     .scale(this.currentScale)
-    .backgroundColor("#00FFFFFF")
+    .backgroundColor('#00FFFFFF')
     .onClick(() => {
       this.currentScale = this.activedScale
       setTimeout(() => {
         this.currentScale = this.defaultScale
       }, 100)
-      if (this.dialogController) {
-        this.dialogController.open()
-      }
+      this.dialogController.open()
     })
     .animation({ duration: 50 })
   }
