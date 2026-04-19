@@ -44,8 +44,9 @@ PersistentStorage.PersistProp('readerFeatureAvailable', false);
 PersistentStorage.PersistProp('readerDetectLoading', false);
 PersistentStorage.PersistProp('readerConfidence', 0);
 PersistentStorage.PersistProp('readerUnsupportedReason', '');
-PersistentStorage.PersistProp('readerRequestToken', 0);
+PersistentStorage.PersistProp('readerModeEnabled', false);
 PersistentStorage.PersistProp('ttsRequestToken', 0);
+PersistentStorage.PersistProp('tabCount', 1);
 
 @Entry
 @Component
@@ -153,6 +154,8 @@ struct Index {
 
   private switchToTab(index: number) {
     if (index < 0 || index >= this.tabs.length) return;
+    this.tabs = [...this.tabManager.getTabs()];
+    AppStorage.setOrCreate('tabCount', this.tabs.length);
     this.currentIndex = index;
     this.tabManager.switchTo(index);
     const currentTab = this.tabManager.getCurrentTab();
@@ -187,6 +190,7 @@ struct Index {
     this.onHistoryChange();
     const firstTab = this.tabManager.newTab('about:blank', '新标签页');
     this.tabs = this.tabManager.getTabs();
+    AppStorage.setOrCreate('tabCount', this.tabs.length);
     this.currentIndex = 0;
     this.switchToTab(0);
     window.getLastWindow(getContext(this), (err, data) => {
