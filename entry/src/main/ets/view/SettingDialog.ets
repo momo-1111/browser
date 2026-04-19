@@ -10,6 +10,7 @@ export default struct SettingDialog {
 
   @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
   @StorageLink("currentEngineName") currentEngineName: string = CommonConstants.SEARCH_ENGINES[0].engine
+  @StorageLink("privateMode") privateMode: boolean = false
   @StorageLink("darkMode") darkMode: boolean = false
   @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
   @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
@@ -27,6 +28,7 @@ export default struct SettingDialog {
   @State showEnginePicker: boolean = false
   @State showReaderStatus: boolean = false
   @State readerModeActive: boolean = false
+  @State privateModeActive: boolean = false
   @State darkModeActive: boolean = false
   @State studyModeActive: boolean = false
   @State refreshTick: number = 0
@@ -37,6 +39,7 @@ export default struct SettingDialog {
 
   async aboutToAppear() {
     this.readerModeActive = this.readerModeEnabled
+    this.privateModeActive = this.privateMode
     this.darkModeActive = this.darkMode
     this.studyModeActive = this.studyModeEnabled
     this.searchEngine = []
@@ -98,6 +101,14 @@ export default struct SettingDialog {
     this.darkMode = nextEnabled
     this.refreshTick = this.refreshTick + 1
     Prompt.showToast({ message: nextEnabled ? "深色模式已启用" : "深色模式已关闭" })
+  }
+
+  private togglePrivateMode() {
+    const nextEnabled = !this.privateModeActive
+    this.privateModeActive = nextEnabled
+    this.privateMode = nextEnabled
+    this.refreshTick = this.refreshTick + 1
+    Prompt.showToast({ message: nextEnabled ? "已开启无痕浏览" : "已关闭无痕浏览" })
   }
 
   private toggleStudyMode() {
@@ -288,8 +299,8 @@ export default struct SettingDialog {
           this.QuickAction("清记录", "清", false, () => {
             this.showClearHistoryDialog()
           })
-          this.QuickAction("关于", "关", false, () => {
-            Prompt.showToast({ message: CommonConstants.APP_NAME + " " + CommonConstants.VERSION })
+          this.QuickAction("无痕浏览", "隐", this.isActionActive(this.privateModeActive), () => {
+            this.togglePrivateMode()
           })
         }
         .width('100%')
