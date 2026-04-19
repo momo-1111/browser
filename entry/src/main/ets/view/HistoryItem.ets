@@ -1,4 +1,9 @@
 import webview from '@ohos.web.webview'
+import { Prompt } from '@kit.ArkUI'
+import CommonConstants from '../common/constants/CommonConstants'
+import DomainUtils from '../utils/DomainUtils'
+import RequestPolicy, { PolicyConfig } from '../utils/RequestPolicy'
+import StudyModeRules from '../utils/StudyModeRules'
 
 @Component
 export default struct HistoryItem {
@@ -11,6 +16,29 @@ export default struct HistoryItem {
   @Consume("pagesDialogShowed") isClicked: boolean
   @Consume("webIsSearched") isSearched: boolean
   @Consume webviewController: webview.WebviewController
+  @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
+  @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
+  @StorageLink("currentEngineIndex") currentEngineIndex: number = 0
+
+  /**
+   * 构建当前策略配置并判断是否允许导航
+   * 返回 true 表示放行，false 表示拦截
+   */
+  private tryNavigate(url: string): boolean {
+    const enginePrefix = CommonConstants.SEARCH_ENGINES[this.currentEngineIndex].prefix
+    const engineHost = DomainUtils.extractHostFromPrefix(enginePrefix)
+    const config: PolicyConfig = {
+      studyModeEnabled: this.studyModeEnabled,
+      whitelist: StudyModeRules.parseWhitelist(this.studyWhitelistJson),
+      currentSearchEngineHost: engineHost
+    }
+    const decision = RequestPolicy.evaluateNavigation(url, config)
+    if (decision.action === "block") {
+      Prompt.showToast({ message: decision.message })
+      return false
+    }
+    return true
+  }
 
   build() {
     Row() {
@@ -41,9 +69,11 @@ export default struct HistoryItem {
       .shadow({ radius: 5, color: Color.Gray })
       .layoutWeight(1)
       .onClick(() => {
-        this.isClicked = ! this.isClicked
-        this.isSearched = true
-        this.webviewController.loadUrl(this.url)
+        // 走统一策略校验，被拦截时只 toast 不加载阻断页
+        if (this.tryNavigate(this.url)) {
+          this.isClicked = !this.isClicked
+          this.isSearched = true
+        }
       })
 
       if (this.showDeleteIcon) {

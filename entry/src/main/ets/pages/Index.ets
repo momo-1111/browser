@@ -1,21 +1,27 @@
 import webview from '@ohos.web.webview'
+import { Prompt } from '@kit.ArkUI'
 import CommonConstants from "../common/constants/CommonConstants"
 import { FunctionButtons } from '../common/bean/FunctionButtons'
 import History from '../common/bean/History'
 import window from '@ohos.window'
 import { inputMethod } from '@kit.IMEKit'
 import RdbUtils from '../utils/RdbUtils'
+import DomainUtils from '../utils/DomainUtils'
+import RequestPolicy, { PolicyConfig } from '../utils/RequestPolicy'
+import StudyModeRules from '../utils/StudyModeRules'
 
 // 持久化数据
 PersistentStorage.PersistProp("privateMode", false)
 PersistentStorage.PersistProp("currentEngineIndex", 0)
 PersistentStorage.PersistProp("currentEngineName", "Bing")
 PersistentStorage.PersistProp("darkMode", false)
+PersistentStorage.PersistProp("studyModeEnabled", false)
+PersistentStorage.PersistProp("studyWhitelistJson", CommonConstants.DEFAULT_STUDY_WHITELIST_JSON)
 
 @Entry
 @Component
 struct Index {
-  // 绑定搜索框内显示的url地址
+  // 绑定搜索框内显示的 URL 地址
   @State url: string = ""
   // 绑定 Web 组件的显示状态,默认为隐藏
   @State isShowed: Visibility = Visibility.None
@@ -35,6 +41,9 @@ struct Index {
   @State isBacked: boolean = false
   // 绑定当前页面是否可前进
   @State isForwarded: boolean = false
+  @State pendingTopLevelUrl: string = ""
+  @State lastBlockedMainFrameUrl: string = ""
+  @State skipNextHistorySave: boolean = false
 
   // 历史浏览记录
   @Provide("historyMap") historyMap: Map<string, History[]> = new Map()
@@ -50,6 +59,8 @@ struct Index {
   @StorageLink("darkMode") darkMode: boolean = false
   // currentEngineIndex 表示当前的搜索引擎的索引
   @StorageLink("currentEngineIndex") searchEngine: number = 0
+  @StorageLink("studyModeEnabled") studyModeEnabled: boolean = false
+  @StorageLink("studyWhitelistJson") studyWhitelistJson: string = CommonConstants.DEFAULT_STUDY_WHITELIST_JSON
 
   private windowClass: window.Window | null = null
 
@@ -112,13 +123,84 @@ struct Index {
     }
   }
 
-  // 判断用户输入的内容是否为网址
-  private checkContent(content: string) {
-    if (content.endsWith(".com") || content.endsWith(".cn") || content.endsWith(".tv")) {
-      return true
-    } else {
-      return false
+  private getPolicyConfig(): PolicyConfig {
+    const enginePrefix = CommonConstants.SEARCH_ENGINES[this.searchEngine].prefix
+    const engineHost = DomainUtils.extractHostFromPrefix(enginePrefix)
+    return {
+      studyModeEnabled: this.studyModeEnabled,
+      whitelist: StudyModeRules.parseWhitelist(this.studyWhitelistJson),
+      currentSearchEngineHost: engineHost
     }
+  }
+
+  private showPolicyToast(message: string) {
+    Prompt.showToast({
+      message
+    })
+  }
+
+  private getCurrentTopLevelUrl(): string {
+    if (this.pendingTopLevelUrl.length > 0) {
+      return this.pendingTopLevelUrl
+    }
+    return this.url
+  }
+
+  private navigateWithPolicy(content: string) {
+    const targetUrl = DomainUtils.resolveInputToUrl(content, CommonConstants.SEARCH_ENGINES[this.searchEngine].prefix)
+    const decision = RequestPolicy.evaluateNavigation(targetUrl, this.getPolicyConfig())
+
+    if (decision.action === "block") {
+      this.showPolicyToast(decision.message)
+      this.inputMethodController.stopInputSession()
+      return
+    }
+
+    this.pendingTopLevelUrl = targetUrl
+    this.skipNextHistorySave = false
+    this.lastBlockedMainFrameUrl = ""
+    this.webviewController.loadUrl(targetUrl)
+    this.url = targetUrl
+
+    if (!this.isSearched) {
+      this.isSearched = true
+    }
+
+    this.inputMethodController.stopInputSession()
+  }
+
+  private buildBlockedPageResponse(message: string): WebResourceResponse {
+    const response = new WebResourceResponse()
+    response.setResponseData(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Blocked</title>
+</head>
+<body style="margin:0;font-family:sans-serif;background:#f7f8fa;display:flex;align-items:center;justify-content:center;min-height:100vh;color:#1f2329;">
+  <div style="max-width:280px;padding:24px;border-radius:18px;background:#ffffff;box-shadow:0 10px 30px rgba(0,0,0,0.08);text-align:center;">
+    <div style="font-size:18px;font-weight:600;margin-bottom:12px;">学习模式已拦截</div>
+    <div style="font-size:14px;line-height:1.6;">${message}</div>
+  </div>
+</body>
+</html>`)
+    response.setResponseEncoding('utf-8')
+    response.setResponseMimeType('text/html')
+    response.setResponseCode(403)
+    response.setReasonMessage('Blocked')
+    response.setResponseIsReady(true)
+    return response
+  }
+
+  private buildEmptyBlockedResponse(): WebResourceResponse {
+    const response = new WebResourceResponse()
+    response.setResponseData("")
+    response.setResponseEncoding('utf-8')
+    response.setResponseMimeType('text/plain')
+    response.setResponseCode(403)
+    response.setReasonMessage('Blocked')
+    response.setResponseIsReady(true)
+    return response
   }
 
   onSearched() {
@@ -158,12 +240,47 @@ struct Index {
             .animation({
               duration: 300
             })
+            .onInterceptRequest((event) => {
+              if (!event) {
+                return null
+              }
+
+              const requestUrl = event.request.getRequestUrl()
+              const isMainFrame = event.request.isMainFrame()
+              const topLevelUrl = isMainFrame ? requestUrl : this.getCurrentTopLevelUrl()
+              const decision = RequestPolicy.evaluateRequest(requestUrl, topLevelUrl, this.getPolicyConfig(), isMainFrame)
+
+              if (decision.action === "allow") {
+                if (isMainFrame) {
+                  this.pendingTopLevelUrl = requestUrl
+                }
+                return null
+              }
+
+              console.info(`学习模式拦截请求: ${requestUrl}`)
+              if (isMainFrame) {
+                this.pendingTopLevelUrl = requestUrl
+                this.skipNextHistorySave = true
+                if (this.lastBlockedMainFrameUrl !== requestUrl) {
+                  this.lastBlockedMainFrameUrl = requestUrl
+                  this.showPolicyToast(decision.message)
+                }
+                return this.buildBlockedPageResponse(decision.message)
+              }
+
+              return this.buildEmptyBlockedResponse()
+            })
             .onProgressChange((event) => {
               this.currentProgress = event.newProgress
-            })
+            }) // 回调，监视当前页面加载情况
             .onPageEnd(async () => {
               try {
                 this.url = this.webviewController.getUrl()
+                this.pendingTopLevelUrl = this.url
+                if (this.skipNextHistorySave) {
+                  this.skipNextHistorySave = false
+                  return
+                }
                 if (!this.privateMode) {
                   await this.onSaveHistory()
                 }
@@ -171,7 +288,7 @@ struct Index {
                 // TODO: Implement error handling.
                 console.log("获取 Url 异常：" + error)
               }
-            })
+            }) // 回调：页面加载成功则读取 url ，交给 savehistory 持久化
             .onRefreshAccessedHistory(() => {
               try {
                 this.isBacked = this.webviewController.accessBackward()
@@ -218,21 +335,7 @@ struct Index {
             // 提交搜索时
             .onSubmit((value) => {
               try {
-                if (this.checkContent(value)) {
-                  this.webviewController.loadUrl(value)
-                } else {
-                  this.webviewController.loadUrl(CommonConstants.SEARCH_ENGINES[this.searchEngine].prefix + value)
-                }
-
-                this.url = this.webviewController.getOriginalUrl()
-
-                //更改搜索框的搜索状态
-                if (!this.isSearched) {
-                  this.isSearched = true
-                }
-
-                // 收起软键盘
-                this.inputMethodController.stopInputSession()
+                this.navigateWithPolicy(value)
               } catch (error) {
                 console.log("提交搜索时异常：" + error)
               }
