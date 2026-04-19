@@ -5,6 +5,7 @@ import emitter from '@ohos.events.emitter'
 import { http } from '@kit.NetworkKit'
 import { fileIo as fs, picker, fileUri } from '@kit.CoreFileKit'
 import { TabManager } from '../model/TabManager'
+import RdbUtils from './RdbUtils'
 
 interface LongPressElementInfo {
   link: string | null
@@ -33,6 +34,7 @@ export class WebLongPressHelper {
   private tabManager: TabManager
   private uiContext: UIContext
   private appContext: Context
+  private getUserId: () => string
   private onShowMenu?: (items: WebLongPressMenuItem[]) => void
   private menuActions: (() => void)[] = []
 
@@ -50,12 +52,14 @@ export class WebLongPressHelper {
     tabManager: TabManager,
     uiContext: UIContext,
     appContext: Context,
+    getUserId: () => string,
     onShowMenu?: (items: WebLongPressMenuItem[]) => void
   ) {
     this.webController = webController
     this.tabManager = tabManager
     this.uiContext = uiContext
     this.appContext = appContext
+    this.getUserId = getUserId
     this.onShowMenu = onShowMenu
   }
 
@@ -404,6 +408,8 @@ export class WebLongPressHelper {
       fs.copyFileSync(srcFile.fd, destFile.fd)
       fs.closeSync(srcFile)
       fs.closeSync(destFile)
+      await RdbUtils.createDownloadTable()
+      await RdbUtils.insertDownload(fileName, localPath, saveUris[0], 'image', this.getUserId())
       Prompt.showToast({ message: '图片已保存' })
     } catch (error) {
       console.error('Save image failed: ' + error)

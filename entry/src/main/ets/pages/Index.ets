@@ -149,6 +149,7 @@ struct Index {
         this.tabManager,
         this.getUIContext(),
         getContext(this),
+        (): string => this.userId,
         (items: WebLongPressMenuItem[]): void => {
           this.showLongPressMenu(items);
         }
