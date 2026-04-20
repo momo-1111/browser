@@ -1,6 +1,7 @@
 import relationalStore from '@ohos.data.relationalStore'
 import History from '../common/bean/History'
 import UserProfile from '../common/bean/UserProfile'
+import WebNote from '../common/bean/WebNote'
 
 export default class RdbUtils {
   // 关系型数据库
@@ -320,6 +321,82 @@ export default class RdbUtils {
       console.error("[Rdb] 查询下载失败: " + e.message);
     }
     return list;
+  }
+
+  static async createWebNoteTable() {
+    const sql = `CREATE TABLE IF NOT EXISTS web_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT,
+      title TEXT,
+      content TEXT,
+      sourceText TEXT,
+      sourceType TEXT,
+      timestamp INTEGER,
+      userId TEXT
+    )`;
+    try {
+      await RdbUtils.executeSql(sql);
+    } catch (e) {
+      console.error("[Rdb] create web_notes failed: " + e.message);
+    }
+  }
+
+  static async insertWebNote(note: WebNote, userId: string) {
+    const valueBucket: relationalStore.ValuesBucket = {
+      "url": note.url,
+      "title": note.title,
+      "content": note.content,
+      "sourceText": note.sourceText,
+      "sourceType": note.sourceType,
+      "timestamp": note.timestamp,
+      "userId": userId
+    };
+    return RdbUtils.getStore().insert("web_notes", valueBucket);
+  }
+
+  static async queryWebNotes(userId: string): Promise<WebNote[]> {
+    let predicates = new relationalStore.RdbPredicates("web_notes");
+    predicates.equalTo("userId", userId).orderByDesc("timestamp");
+    let notes: WebNote[] = [];
+    let resultSet: relationalStore.ResultSet | null = null;
+    try {
+      resultSet = await RdbUtils.getStore().query(predicates);
+      while (resultSet.goToNextRow()) {
+        const id = resultSet.getLong(resultSet.getColumnIndex("id"));
+        const url = resultSet.getString(resultSet.getColumnIndex("url"));
+        const title = resultSet.getString(resultSet.getColumnIndex("title"));
+        const content = resultSet.getString(resultSet.getColumnIndex("content"));
+        const sourceText = resultSet.getString(resultSet.getColumnIndex("sourceText"));
+        const sourceType = resultSet.getString(resultSet.getColumnIndex("sourceType"));
+        const timestamp = resultSet.getLong(resultSet.getColumnIndex("timestamp"));
+        let note = new WebNote(url, title, content, sourceText, sourceType, timestamp);
+        note.setId(id);
+        notes.push(note);
+      }
+    } catch (e) {
+      console.error("[Rdb] query web_notes failed: " + e.message);
+    } finally {
+      if (resultSet) {
+        resultSet.close();
+      }
+    }
+    return notes;
+  }
+
+  static async updateWebNote(id: number, content: string) {
+    const valueBucket: relationalStore.ValuesBucket = {
+      "content": content,
+      "timestamp": new Date().getTime()
+    };
+    let predicates = new relationalStore.RdbPredicates("web_notes");
+    predicates.equalTo("id", id);
+    return RdbUtils.getStore().update(valueBucket, predicates);
+  }
+
+  static async deleteWebNote(id: number) {
+    let predicates = new relationalStore.RdbPredicates("web_notes");
+    predicates.equalTo("id", id);
+    return RdbUtils.getStore().delete(predicates);
   }
 
 
