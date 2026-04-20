@@ -2,7 +2,6 @@ import webview from '@ohos.web.webview';
 import { Prompt, promptAction } from '@kit.ArkUI';
 import CommonConstants from '../common/constants/CommonConstants';
 import { FunctionButtons } from '../common/bean/FunctionButtons';
-import { FavoriteButton } from '../common/bean/FavoriteButton';
 import History from '../common/bean/History';
 import window from '@ohos.window';
 import { inputMethod } from '@kit.IMEKit';
@@ -13,9 +12,7 @@ import StudyModeRules from '../utils/StudyModeRules';
 import { fileUri } from '@kit.CoreFileKit';
 import { TabManager } from '../model/TabManager';
 import { TabModel } from '../model/TabModel';
-import { WebLongPressHelper, WebLongPressMenuItem } from '../utils/WebLongPressHelper';
-import WebLongPressMenuDialog from '../view/WebLongPressMenuDialog';
-import WebNoteDialog from '../view/WebNoteDialog';
+import { WebLongPressHelper } from '../utils/WebLongPressHelper';
 import emitter from '@ohos.events.emitter';
 
 import { TtsReaderService } from '../utils/TtsReaderService';
@@ -28,10 +25,6 @@ interface SwitchTabEventData {
 interface ReaderRequestEventData {
   enabled?: boolean;
   token?: number;
-}
-
-interface TabHistoryNavigateEventData {
-  url: string;
 }
 
 // 持久化数据
@@ -54,8 +47,6 @@ PersistentStorage.PersistProp('readerUnsupportedReason', '');
 PersistentStorage.PersistProp('readerModeEnabled', false);
 PersistentStorage.PersistProp('ttsRequestToken', 0);
 PersistentStorage.PersistProp('tabCount', 1);
-PersistentStorage.PersistProp('tabSwitchIndex', 0);
-PersistentStorage.PersistProp('tabSwitchToken', 0);
 
 @Entry
 @Component
@@ -110,47 +101,12 @@ struct Index {
   @StorageLink('nickname') nickname: string = '小狐狸用户';
   @StorageLink('avatarPath') avatarPath: string = '';
   @StorageLink('ttsRequestToken') @Watch('onTtsRequest') ttsRequestToken: number = 0;
-  @StorageLink('tabSwitchIndex') tabSwitchIndex: number = 0;
-  @StorageLink('tabSwitchToken') @Watch('onTabSwitchRequest') tabSwitchToken: number = 0;
 
   delegate: webview.WebDownloadDelegate = new webview.WebDownloadDelegate();
   private windowClass: window.Window | null = null;
   private textInputController: TextInputController = new TextInputController();
   private inputMethodController: inputMethod.InputMethodController = inputMethod.getController();
   private longPressHelper?: WebLongPressHelper;
-  @State longPressMenuItems: WebLongPressMenuItem[] = [];
-  @State noteInitialContent: string = '';
-  @State noteSourceText: string = '';
-  @State noteSourceType: string = 'manual';
-  @State quickActionsExpanded: boolean = false;
-  private longPressMenuController: CustomDialogController = new CustomDialogController({
-    builder: WebLongPressMenuDialog({
-      items: this.longPressMenuItems,
-      onSelect: (index: number): void => {
-        this.longPressHelper?.runMenuAction(index);
-      }
-    }),
-    alignment: DialogAlignment.Bottom,
-    offset: { dx: 0, dy: -12 }
-  });
-  private webNoteDialogController: CustomDialogController = new CustomDialogController({
-    builder: WebNoteDialog({
-      url: this.url,
-      title: this.webviewController.getTitle(),
-      initialContent: this.noteInitialContent,
-      sourceText: this.noteSourceText,
-      sourceType: this.noteSourceType,
-      userId: this.userId,
-      onSaved: (): void => {
-        this.noteInitialContent = '';
-        this.noteSourceText = '';
-        this.noteSourceType = 'manual';
-      }
-    }),
-    alignment: DialogAlignment.Bottom,
-    offset: { dx: 0, dy: -12 }
-  });
-  private navigationHistoryMode: string = 'none';
 
   private tabManager: TabManager = new TabManager();
   @State tabs: TabModel[] = [];
@@ -162,42 +118,6 @@ struct Index {
     this.ttsService = new TtsReaderService(this.webviewController, () => {
       this.syncTtsState();
     });
-  }
-
-  private ensureLongPressHelper(): WebLongPressHelper {
-    if (!this.longPressHelper) {
-      this.longPressHelper = new WebLongPressHelper(
-        this.webviewController,
-        this.tabManager,
-        this.getUIContext(),
-        getContext(this),
-        (): string => this.userId,
-        (items: WebLongPressMenuItem[]): void => {
-          this.showLongPressMenu(items);
-        },
-        (sourceType: string, sourceText: string): void => {
-          this.openWebNoteDialog(sourceType, sourceText);
-        }
-      );
-    }
-    return this.longPressHelper;
-  }
-
-  private showLongPressMenu(items: WebLongPressMenuItem[]): void {
-    this.longPressMenuItems = items;
-    this.longPressMenuController.open();
-  }
-
-  private openWebNoteDialog(sourceType: string = 'manual', sourceText: string = ''): void {
-    if (!this.canShowFavorite()) {
-      Prompt.showToast({ message: '打开网页后才能添加笔记' });
-      return;
-    }
-    this.quickActionsExpanded = false;
-    this.noteInitialContent = '';
-    this.noteSourceText = sourceText;
-    this.noteSourceType = sourceType;
-    this.webNoteDialogController.open();
   }
 
   async onUserChanged() {
@@ -232,144 +152,41 @@ struct Index {
     AppStorage.setOrCreate('globalHistoryMap', this.historyMap);
   }
 
-  private updateCurrentTabNavigation(canGoBack: boolean, canGoForward: boolean) {
-    this.isBacked = canGoBack;
-    this.isForwarded = canGoForward;
-    const currentTab = this.tabManager.getCurrentTab();
-    if (currentTab) {
-      currentTab.canGoBack = canGoBack;
-      currentTab.canGoForward = canGoForward;
-      this.tabs = [...this.tabManager.getTabs()];
-    }
-  }
-
-  private showWebContent() {
-    if (!this.isSearched) this.isSearched = true;
-    this.isShowed = Visibility.Visible;
-    this.high = '91%';
-    this.textAlign = TextAlign.Center;
-  }
-
-  private resetToBlankTab() {
-    this.url = '';
-    this.pendingTopLevelUrl = '';
-    this.lastBlockedMainFrameUrl = '';
-    this.skipNextHistorySave = false;
-    this.navigationHistoryMode = 'none';
-    this.currentProgress = 0;
-    this.isSearched = false;
-    this.isShowed = Visibility.None;
-    this.high = '10%';
-    this.textAlign = TextAlign.Start;
-    this.updateCurrentTabNavigation(false, false);
-    try {
-      this.webviewController.loadUrl('about:blank');
-    } catch (error) {
-      console.warn('Reset blank tab skipped before Web binding: ' + error);
-    }
-  }
-
-  private showExistingTab(tab: TabModel) {
-    this.isBacked = tab.canGoBack;
-    this.isForwarded = tab.canGoForward;
-    this.currentProgress = 0;
-    if (tab.url === 'about:blank') {
-      this.resetToBlankTab();
-      return;
-    }
-    this.url = tab.url;
-    this.pendingTopLevelUrl = tab.url;
-    this.skipNextHistorySave = false;
-    this.lastBlockedMainFrameUrl = '';
-    this.navigationHistoryMode = 'switch';
-    this.showWebContent();
-    this.tryLoadUrlWhenReady(tab.url, 0);
-  }
-
-  private canShowFavorite(): boolean {
-    return this.isSearched && this.url.length > 0 && this.url !== 'about:blank';
-  }
-
-  private queueNavigation(targetUrl: string, historyMode: string = 'push') {
-    if (!targetUrl || targetUrl.length === 0) return;
-    this.pendingTopLevelUrl = targetUrl;
-    this.skipNextHistorySave = false;
-    this.lastBlockedMainFrameUrl = '';
-    this.navigationHistoryMode = historyMode;
-    this.url = targetUrl;
-    this.showWebContent();
-
-    const currentTab = this.tabManager.getCurrentTab();
-    if (currentTab) {
-      if (historyMode === 'push') {
-        this.tabManager.pushCurrentHistory(targetUrl, '');
-      } else if (historyMode === 'replace') {
-        this.tabManager.replaceCurrentHistory(targetUrl, '');
-      } else {
-        currentTab.url = targetUrl;
-      }
-      this.isBacked = currentTab.canGoBack;
-      this.isForwarded = currentTab.canGoForward;
-      this.tabs = [...this.tabManager.getTabs()];
-    }
-
-    this.tryLoadUrlWhenReady(targetUrl, 0);
-  }
-
-  private navigateTabHistory(targetUrl: string) {
-    if (!targetUrl || targetUrl === 'about:blank') {
-      this.resetToBlankTab();
-      return;
-    }
-    this.pendingTopLevelUrl = targetUrl;
-    this.skipNextHistorySave = false;
-    this.lastBlockedMainFrameUrl = '';
-    this.navigationHistoryMode = 'switch';
-    this.url = targetUrl;
-    this.showWebContent();
-    const currentTab = this.tabManager.getCurrentTab();
-    if (currentTab) {
-      this.isBacked = currentTab.canGoBack;
-      this.isForwarded = currentTab.canGoForward;
-      this.tabs = [...this.tabManager.getTabs()];
-    }
-    this.tryLoadUrlWhenReady(targetUrl, 0);
-  }
-
-  private tryLoadUrlWhenReady(targetUrl: string, attempt: number) {
-    setTimeout(() => {
-      if (this.url !== targetUrl) return;
-      try {
-        this.webviewController.loadUrl(targetUrl);
-      } catch (error) {
-        if (attempt < 4) {
-          this.tryLoadUrlWhenReady(targetUrl, attempt + 1);
-        } else {
-          console.warn('WebView controller 尚未绑定，已通过 src 等待加载：' + error);
-        }
-      }
-    }, attempt === 0 ? 120 : 180);
-  }
-
   private switchToTab(index: number) {
-    this.tabs = [...this.tabManager.getTabs()];
     if (index < 0 || index >= this.tabs.length) return;
-    if (!this.tabManager.switchTo(index)) return;
     this.tabs = [...this.tabManager.getTabs()];
     AppStorage.setOrCreate('tabCount', this.tabs.length);
-    this.currentIndex = this.tabManager.getActiveIndex();
+    this.currentIndex = index;
+    this.tabManager.switchTo(index);
     const currentTab = this.tabManager.getCurrentTab();
     if (currentTab) {
-      this.showExistingTab(currentTab);
+      this.url = currentTab.url;
+      this.isBacked = currentTab.canGoBack;
+      this.isForwarded = currentTab.canGoForward;
+      if (currentTab.url === 'about:blank') {
+        this.isSearched = false;
+        if (this.webviewController.getUrl() !== 'about:blank') this.webviewController.loadUrl('about:blank');
+      } else {
+        this.isSearched = true;
+        if (this.webviewController.getUrl() !== currentTab.url) this.webviewController.loadUrl(currentTab.url);
+      }
+    }
+  }
+
+  private async exitReaderModeAndStopTts() {
+    if (this.isReaderMode) {
+      this.isReaderMode = false;
+    }
+    if (this.ttsService) {
+      await this.ttsService.stopTts();
+      this.syncTtsState();
     }
   }
 
   async aboutToAppear() {
     console.debug('项目正在启动');
     this.ensureTtsService();
-    this.ensureLongPressHelper();
     await RdbUtils.createDownloadTable();
-    await RdbUtils.createWebNoteTable();
     this.initDownloadListener();
     await RdbUtils.createProfileTable();
     await RdbUtils.createDateTable();
@@ -381,7 +198,8 @@ struct Index {
       this.historyMap.set(date, histories);
     }
     this.onHistoryChange();
-    this.tabs = [...this.tabManager.getTabs()];
+    const firstTab = this.tabManager.newTab('about:blank', '新标签页');
+    this.tabs = this.tabManager.getTabs();
     AppStorage.setOrCreate('tabCount', this.tabs.length);
     this.currentIndex = 0;
     this.switchToTab(0);
@@ -394,24 +212,27 @@ struct Index {
       const eventData = data?.data as SwitchTabEventData;
       if (eventData && eventData.index !== undefined) this.switchToTab(eventData.index);
     });
-    emitter.on('tabHistoryNavigate', (data?: emitter.EventData) => {
-      const eventData = data?.data as TabHistoryNavigateEventData;
-      if (eventData && eventData.url) this.navigateTabHistory(eventData.url);
-    });
     emitter.on('readerRequest', (data?: emitter.EventData) => {
       const eventData = data?.data as ReaderRequestEventData;
       if (!eventData || !eventData.enabled) return;
       void this.detectAndSetReaderContent();
     });
-    this.ensureLongPressHelper();
+    this.longPressHelper = new WebLongPressHelper(
+      this.webviewController,
+      this.tabManager,
+      this.getUIContext(),
+      getContext(this),
+      () => this.userId
+    );
     console.debug('项目已启动');
   }
 
   onPageShow() {
     let target: string = AppStorage.get('targetUrl') || '';
     if (target !== '') {
+      this.webviewController.loadUrl(target);
+      this.isSearched = true;
       AppStorage.setOrCreate('targetUrl', '');
-      this.queueNavigation(target);
     }
     if (this.isReaderMode) {
       void this.detectAndSetReaderContent();
@@ -422,6 +243,13 @@ struct Index {
       }, 360);
     }
     if (this.historyMap.size === 0) this.refreshHistoryData();
+    if (this.targetUrl && this.targetUrl !== '') {
+      if (!this.isSearched) { this.isSearched = true; this.onSearched(); }
+      setTimeout(() => {
+        try { this.webviewController.loadUrl(this.targetUrl); this.url = this.targetUrl; AppStorage.setOrCreate('targetUrl', ''); }
+        catch (e) { console.error('加载 URL 失败: ' + e); }
+      }, 50);
+    }
   }
 
   initDownloadListener() {
@@ -482,7 +310,11 @@ struct Index {
     this.pendingTopLevelUrl = targetUrl;
     this.skipNextHistorySave = false;
     this.lastBlockedMainFrameUrl = '';
-    this.queueNavigation(targetUrl);
+    this.webviewController.loadUrl(targetUrl);
+    this.url = targetUrl;
+    const currentTab = this.tabManager.getCurrentTab();
+    if (currentTab) { currentTab.url = targetUrl; currentTab.title = ''; this.tabs = [...this.tabManager.getTabs()]; }
+    if (!this.isSearched) this.isSearched = true;
     this.inputMethodController.stopInputSession();
   }
 
@@ -531,8 +363,13 @@ struct Index {
 
   private onTtsRequest() {
     if (!this.ttsService) return;
-    this.ttsService.startTts(this.readerParagraphs, this.isReaderMode, getContext(this));
-    this.syncTtsState();
+    void (async () => {
+      if (this.readerParagraphs.length === 0) {
+        await this.detectAndSetReaderContent();
+      }
+      await this.ttsService!.startTts(this.readerParagraphs, this.isReaderMode, getContext(this));
+      this.syncTtsState();
+    })();
   }
 
   private onReaderModeChanged() {
@@ -547,63 +384,6 @@ struct Index {
     void this.detectAndSetReaderContent();
   }
 
-  private onTabSwitchRequest() {
-    this.switchToTab(this.tabSwitchIndex);
-  }
-
-  @Builder
-  private WebQuickActions() {
-    Row({ space: 8 }) {
-      Button({ type: ButtonType.Circle, stateEffect: true }) {
-        Text(this.quickActionsExpanded ? '×' : '+')
-          .fontSize(24)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#45A5FF')
-      }
-      .width(44)
-      .height(44)
-      .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
-      .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
-      .onClick(() => {
-        this.quickActionsExpanded = !this.quickActionsExpanded
-      })
-
-      if (this.quickActionsExpanded) {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          Image($r('app.media.note'))
-            .width(22)
-            .height(22)
-        }
-        .width(44)
-        .height(44)
-        .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
-        .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
-        .onClick(() => {
-          this.openWebNoteDialog()
-        })
-
-        Row() {
-          FavoriteButton({
-            currentUrl: this.url,
-            currentTitle: this.tabManager.getCurrentTab()?.title || ''
-          })
-        }
-        .width(44)
-        .height(44)
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor(!this.darkMode ? Color.White : '#2C2C2C')
-        .borderRadius(22)
-        .shadow({ radius: 14, color: '#1A000000', offsetX: 0, offsetY: 4 })
-        .onClick(() => {
-          this.quickActionsExpanded = false
-        })
-      }
-    }
-    .height(48)
-    .alignItems(VerticalAlign.Center)
-    .animation({ duration: 180, curve: Curve.EaseOut })
-  }
-
   private onToggleReaderMode() {
     if (!this.isReaderMode && !this.readerAvailable) {
       Prompt.showToast({ message: `当前页面不支持阅读器：${this.readerUnsupportedReason || '原因未知'}` });
@@ -613,12 +393,15 @@ struct Index {
   }
 
   onSearched() {
-    this.showWebContent();
+    this.isShowed = Visibility.Visible;
+    this.high = '91%';
+    this.textAlign = TextAlign.Center;
   }
 
   @Builder ReaderContentPanel() {
     Column() {
       Row({ space: 8 }) {
+        Button('退出阅读').type(ButtonType.Capsule).height(30).fontSize(12).onClick(() => { void this.exitReaderModeAndStopTts(); })
         Button('-字').type(ButtonType.Capsule).height(30).fontSize(12).onClick(() => { this.readerFontScale = Math.max(0.8, this.readerFontScale - 0.1); })
         Button('+字').type(ButtonType.Capsule).height(30).fontSize(12).onClick(() => { this.readerFontScale = Math.min(1.6, this.readerFontScale + 0.1); })
         Button('-行距').type(ButtonType.Capsule).height(28).fontSize(11).onClick(() => { this.readerLineHeight = Math.max(1.2, this.readerLineHeight - 0.1); })
@@ -737,63 +520,29 @@ struct Index {
               .onProgressChange((event) => { this.currentProgress = event.newProgress; })
               .onPageEnd(async () => {
                 try {
+                  const previousUrl = this.url;
                   const newUrl = this.webviewController.getUrl();
+                  const pageChanged = previousUrl.length > 0 && newUrl.length > 0 && newUrl !== previousUrl;
+                  if (this.isReaderMode && pageChanged) {
+                    await this.exitReaderModeAndStopTts();
+                  }
                   const currentTab = this.tabManager.getCurrentTab();
-                  if (currentTab && currentTab.url === 'about:blank' && newUrl !== 'about:blank' && !this.isSearched) {
-                    this.updateCurrentTabNavigation(false, false);
-                    this.skipNextHistorySave = false;
-                    this.navigationHistoryMode = 'none';
-                    return;
-                  }
-                  if (currentTab && newUrl !== 'about:blank') {
-                    const title = this.webviewController.getTitle();
-                    if (this.navigationHistoryMode === 'none' && currentTab.url !== newUrl) {
-                      this.tabManager.pushCurrentHistory(newUrl, title);
-                    } else {
-                      this.tabManager.replaceCurrentHistory(newUrl, title);
-                    }
-                    this.url = newUrl;
-                    this.isBacked = currentTab.canGoBack;
-                    this.isForwarded = currentTab.canGoForward;
-                    this.tabs = [...this.tabManager.getTabs()];
-                  }
-                  this.navigationHistoryMode = 'none';
+                  if (currentTab && currentTab.url !== newUrl && newUrl !== 'about:blank') { currentTab.url = newUrl; currentTab.title = this.webviewController.getTitle(); this.url = newUrl; this.tabs = [...this.tabManager.getTabs()]; }
                   this.pendingTopLevelUrl = this.url;
                   if (this.skipNextHistorySave) { this.skipNextHistorySave = false; return; }
                   if (!this.privateMode) await this.onSaveHistory();
                   emitter.emit({ eventId: 10002 });
-                  this.ensureLongPressHelper().disableNativeImageDrag();
                   await this.detectAndSetReaderContent();
                 } catch (error) { console.log('获取 Url 异常：' + error); }
               })
               .onRefreshAccessedHistory(() => {
-                try {
-                  const currentTab = this.tabManager.getCurrentTab();
-                  if (currentTab && currentTab.url === 'about:blank') {
-                    this.updateCurrentTabNavigation(false, false);
-                    return;
-                  }
-                  this.isBacked = currentTab?.canGoBack || false;
-                  this.isForwarded = currentTab?.canGoForward || false;
-                }
+                try { this.isBacked = this.webviewController.accessBackward(); this.isForwarded = this.webviewController.accessForward(); const currentTab = this.tabManager.getCurrentTab(); if (currentTab) { currentTab.canGoBack = this.isBacked; currentTab.canGoForward = this.isForwarded; } }
                 catch (error) { console.log('更新前进或后退状态异常：' + error); }
               })
-              .onTouch((event: TouchEvent) => {
-                const handled: boolean = this.ensureLongPressHelper().onTouchEvent(event);
-                return handled;
-              });
+              .onTouch((event: TouchEvent) => { this.longPressHelper?.onTouchEvent(event); });
 
             if (this.isReaderMode) {
               this.ReaderContentPanel()
-            }
-
-            if (this.canShowFavorite()) {
-              Row() {
-                this.WebQuickActions()
-              }
-              .align(Alignment.TopStart)
-              .margin({ top: 14, left: 14 })
-              .zIndex(4)
             }
           }
 
@@ -828,7 +577,7 @@ struct Index {
         }
         .width('100%')
         .alignItems(HorizontalAlign.Center)
-        .padding({ left: 0, right: 0, bottom: 12 })
+        .margin({ bottom: 124 })
         .zIndex(30);
       }
     }
